@@ -6,6 +6,11 @@ struct MacNativeMCPApp: App {
     @State private var serverManager = MCPServerManager()
     @State private var authManager = AuthManager()
 
+    init() {
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -14,7 +19,10 @@ struct MacNativeMCPApp: App {
                 .environment(authManager)
                 .background(MainWindowSetupView())
                 .preferredColorScheme(.dark)
-                .task { AppTheme.applyDarkMode() }
+                .task {
+                    AppTheme.applyDarkMode()
+                    NSApp.activate(ignoringOtherApps: true)
+                }
                 .onChange(of: authManager.state) { _, state in
                     if case .authenticated = state {
                         serverManager.apiKey = authManager.currentAPIKey

@@ -43,16 +43,22 @@ final class AuthManager {
     // MARK: - dev.env loader (DEBUG only)
 
     private func loadFromDevEnv() -> String? {
-        // Bundle lives at {project}/MacNativeMCP.app — parent is the project root
-        let projectDir = Bundle.main.bundleURL.deletingLastPathComponent()
-        let envFile = projectDir.appendingPathComponent("dev.env")
-        guard let contents = try? String(contentsOf: envFile, encoding: .utf8) else { return nil }
-        for line in contents.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("NEXLAYER_API_KEY="), !trimmed.hasPrefix("#") else { continue }
-            let value = String(trimmed.dropFirst("NEXLAYER_API_KEY=".count))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return value.isEmpty ? nil : value
+        // Check multiple locations so it works from both run.sh and Xcode
+        let candidates: [URL] = [
+            // run.sh: bundle lives at {project}/MacNativeMCP.app
+            Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("dev.env"),
+            // Xcode / anywhere: stable user-level config
+            URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".config/mac-native-mcp/dev.env"),
+        ]
+        for url in candidates {
+            guard let contents = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            for line in contents.components(separatedBy: .newlines) {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard trimmed.hasPrefix("NEXLAYER_API_KEY="), !trimmed.hasPrefix("#") else { continue }
+                let value = String(trimmed.dropFirst("NEXLAYER_API_KEY=".count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !value.isEmpty { return value }
+            }
         }
         return nil
     }

@@ -32,10 +32,23 @@ struct ServerDetailView: View {
                         Text("\(info.name)  ·  v\(info.version)")
                             .font(AppFonts.label)
                             .foregroundStyle(AppColors.textSecondary)
-                    } else if server.transport == .http {
-                        Text(server.url)
-                            .font(AppFonts.label)
-                            .foregroundStyle(AppColors.textSecondary)
+                    } else if server.transport == .http, !server.url.isEmpty {
+                        Button {
+                            if let url = URL(string: server.url) {
+                                NSWorkspace.shared.open(url)
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(server.url)
+                                    .font(AppFonts.label)
+                                    .foregroundStyle(AppColors.accent)
+                                Image(systemName: "arrow.up.right.square")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(AppColors.accent)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open in browser")
                     } else {
                         Text(([server.command] + server.args).joined(separator: " "))
                             .font(AppFonts.label)

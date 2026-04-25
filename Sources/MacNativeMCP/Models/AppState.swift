@@ -14,6 +14,10 @@ class AppState {
 
     init() {
         servers = store.load()
+        if servers.isEmpty {
+            servers = NexlayerBootstrap.defaultServers
+            store.save(servers)
+        }
     }
 
     func addServer(_ config: ServerConfig) {
