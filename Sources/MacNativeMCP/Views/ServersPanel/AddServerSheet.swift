@@ -159,7 +159,7 @@ struct AddServerSheet: View {
     }
 }
 
-private extension TextField {
+private extension View {
     func styledInput(error: Bool = false) -> some View {
         self
             .textFieldStyle(.plain)

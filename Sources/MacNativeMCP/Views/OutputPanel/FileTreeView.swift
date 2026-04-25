@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct FileTreeView: View {
-    let entries: [FileEntry]
+    let entries: [AppState.FileEntry]
 
     var body: some View {
         List {
@@ -131,6 +131,6 @@ private struct FileTreeRowView: View {
         ),
     ]
 
-    return FileTreeView(entries: sampleEntries)
+    FileTreeView(entries: sampleEntries)
         .background(AppColors.background)
 }

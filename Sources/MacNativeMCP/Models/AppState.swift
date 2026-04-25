@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 
 @Observable
@@ -31,12 +32,20 @@ class AppState {
         store.save(servers)
     }
 
+    enum TransportType: String, Codable {
+        case stdio, http
+    }
+
     struct ServerConfig: Identifiable, Codable {
         var id: UUID = UUID()
         var name: String = ""
+        var transport: TransportType = .stdio
+        // stdio fields
         var command: String = ""
         var args: [String] = []
         var envVars: [String: String] = [:]
+        // http fields
+        var url: String = ""
     }
 
     struct ConversationMessage: Identifiable {

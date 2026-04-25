@@ -23,3 +23,7 @@ xcuserdata/
 
 # Generated files
 *.generated.swift
+
+# Local dev secrets — never commit
+dev.env
+MacNativeMCP.app/

@@ -126,7 +126,12 @@ struct LandingView: View {
                     .padding(.bottom, 24)
             }
         }
-        .onAppear { keyFieldFocused = true }
+        .onAppear {
+            keyFieldFocused = true
+            if apiKey.isEmpty, let devKey = auth.devEnvKey {
+                apiKey = devKey
+            }
+        }
     }
 
     private func submit() {

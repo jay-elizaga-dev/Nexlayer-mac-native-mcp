@@ -19,7 +19,7 @@ struct ToolRowView: View {
                 .foregroundStyle(AppColors.textPrimary)
                 .lineLimit(1)
 
-            Text(tool.description)
+            Text(tool.description ?? "")
                 .font(AppFonts.label)
                 .foregroundStyle(AppColors.textSecondary)
                 .lineLimit(1)

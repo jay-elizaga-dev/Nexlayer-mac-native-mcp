@@ -8,7 +8,15 @@ struct ServerDetailView: View {
 
     private var client: MCPClient? { serverManager.clients[server.id] }
     private var status: MCPServerManager.ConnectionStatus {
-        client?.status ?? (serverManager.connectionErrors[server.id] != nil ? .error : .stopped)
+        guard let client else {
+            return serverManager.connectionErrors[server.id] != nil ? .error : .stopped
+        }
+        switch client.state {
+        case .ready:        return .connected
+        case .connecting:   return .connecting
+        case .disconnected: return .stopped
+        case .error:        return .error
+        }
     }
 
     var body: some View {

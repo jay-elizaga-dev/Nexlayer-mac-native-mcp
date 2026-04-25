@@ -41,8 +41,9 @@ struct ServerRowView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(isHovered ? AppColors.surfaceHover : Color.clear)
+            .background(appState.activeServerId == server.id ? AppColors.accent.opacity(0.15) : isHovered ? AppColors.surfaceHover : Color.clear)
             .onHover { isHovered = $0 }
+            .onTapGesture { appState.activeServerId = server.id }
             .contentShape(Rectangle())
             .contextMenu {
                 Button("Edit") { showEditSheet = true }
@@ -85,14 +86,21 @@ struct ServerRowView: View {
     }
 
     private var status: MCPServerManager.ConnectionStatus {
-        serverManager.clients[server.id]?.status ?? .stopped
+        guard let client = serverManager.clients[server.id] else { return .stopped }
+        switch client.state {
+        case .ready:                 return .connected
+        case .disconnected,
+             .connecting:            return .stopped
+        case .error:                 return .error
+        }
     }
 
     private var statusColor: Color {
         switch status {
-        case .connected: return AppColors.success
-        case .stopped:   return AppColors.textSecondary
-        case .error:     return AppColors.danger
+        case .connected:  return AppColors.success
+        case .connecting: return AppColors.accent
+        case .stopped:    return AppColors.textSecondary
+        case .error:      return AppColors.danger
         }
     }
 }

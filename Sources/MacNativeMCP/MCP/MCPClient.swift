@@ -90,6 +90,12 @@ final class MCPClient {
         }
     }
 
+    func disconnect() {
+        transport?.close()
+        transport = nil
+        state = .disconnected
+    }
+
     func callTool(name: String, arguments: [String: Any]) async throws -> CallToolResult {
         let params = CallToolParams(name: name, arguments: AnyCodable(arguments))
         return try await sendRequest(method: "tools/call", params: params)

@@ -15,12 +15,17 @@ final class AuthManager {
     }
 
     var state: State = .checking
+    var currentAPIKey: String?
+    var devEnvKey: String?
 
     private let nexlayerURL = URL(string: "https://mcp.nexlayer.ai/api/mcp")!
     private let keychainService = "dev.elizaga.mac-native-mcp"
     private let keychainAccount = "nexlayer-api-key"
 
     init() {
+        #if DEBUG
+        devEnvKey = loadFromDevEnv()
+        #endif
         Task { await checkStoredKey() }
     }
 
@@ -33,6 +38,23 @@ final class AuthManager {
         }
         state = .connecting
         await connect(apiKey: key, saveOnSuccess: false)
+    }
+
+    // MARK: - dev.env loader (DEBUG only)
+
+    private func loadFromDevEnv() -> String? {
+        // Bundle lives at {project}/MacNativeMCP.app — parent is the project root
+        let projectDir = Bundle.main.bundleURL.deletingLastPathComponent()
+        let envFile = projectDir.appendingPathComponent("dev.env")
+        guard let contents = try? String(contentsOf: envFile, encoding: .utf8) else { return nil }
+        for line in contents.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("NEXLAYER_API_KEY="), !trimmed.hasPrefix("#") else { continue }
+            let value = String(trimmed.dropFirst("NEXLAYER_API_KEY=".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? nil : value
+        }
+        return nil
     }
 
     // MARK: - Public
@@ -49,6 +71,7 @@ final class AuthManager {
 
     func signOut() {
         deleteFromKeychain()
+        currentAPIKey = nil
         state = .unauthenticated
     }
 
@@ -68,6 +91,7 @@ final class AuthManager {
                 return
             }
             if saveOnSuccess { saveToKeychain(apiKey) }
+            currentAPIKey = apiKey
             state = .authenticated
         } catch {
             state = .error("Connection failed: \(error.localizedDescription)")

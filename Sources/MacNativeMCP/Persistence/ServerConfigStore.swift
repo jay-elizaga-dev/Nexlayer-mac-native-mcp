@@ -1,3 +1,5 @@
+import Foundation
+
 final class ServerConfigStore {
     private let key = "mcp.server_configs"
 
