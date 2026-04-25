@@ -1,0 +1,25 @@
+# Swift Package Manager
+.build/
+*.resolved
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Build artifacts
+*.o
+*.d
+*.swp
+*~
+
+# Generated files
+*.generated.swift
