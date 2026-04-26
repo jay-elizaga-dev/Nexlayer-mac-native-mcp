@@ -44,27 +44,14 @@ struct ContentView: View {
 
     // MARK: - Layouts
 
+    /// Servers mode: drawer contains the server list; main split is center + right only.
     private var serverLayout: some View {
         HSplitView {
-            serversPanelIfNeeded
-                .frame(minWidth: 220, maxWidth: 260)
-
             centerPanel
                 .frame(minWidth: 400)
 
             rightPanel
                 .frame(minWidth: 280)
-        }
-    }
-
-    @ViewBuilder
-    private var serversPanelIfNeeded: some View {
-        if appState.sidebarOpen {
-            // Drawer is open and showing servers nav — embed the server list inside the split
-            ServersPanelView()
-        } else {
-            // Icon rail is visible, server list goes in main split
-            ServersPanelView()
         }
     }
 

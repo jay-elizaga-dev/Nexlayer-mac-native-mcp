@@ -1,14 +1,24 @@
 import SwiftUI
 
+/// Left sidebar drawer.
+/// Open + Servers mode  → 240px panel containing the full server list
+/// Open + Cost mode     → 200px nav panel (cost summary in main area)
+/// Closed               → 44px icon rail
 struct SideDrawer: View {
     @Environment(AppState.self) var appState
     @Environment(NexlayerService.self) var nexlayer
 
+    private var drawerWidth: CGFloat {
+        appState.sidebarMode == .servers ? 240 : 200
+    }
+
     var body: some View {
         if appState.sidebarOpen {
             expandedDrawer
+                .frame(width: drawerWidth)
         } else {
             iconRail
+                .frame(width: 44)
         }
     }
 
@@ -16,48 +26,68 @@ struct SideDrawer: View {
 
     private var expandedDrawer: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 6) {
-                Text("WORKSPACE")
-                    .font(AppFonts.label)
-                    .foregroundStyle(AppColors.textSecondary)
-                Spacer()
-                Button { withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { appState.sidebarOpen = false } }
-                label: { Image(systemName: "sidebar.left").foregroundStyle(AppColors.textSecondary) }
-                .buttonStyle(.plain)
-                .help("Collapse sidebar")
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            drawerHeader
 
             Divider().background(AppColors.border)
 
-            // Nav items
-            navButton(icon: "server.rack",   label: "Servers", mode: .servers)
+            switch appState.sidebarMode {
+            case .servers:
+                serversContent
+            case .cost:
+                costNavContent
+            }
+        }
+        .background(AppColors.surface)
+    }
+
+    private var drawerHeader: some View {
+        HStack(spacing: 6) {
+            Image(systemName: appState.sidebarMode == .servers ? "server.rack" : "chart.bar.xaxis")
+                .foregroundStyle(AppColors.accent)
+                .frame(width: 16)
+            Text(appState.sidebarMode == .servers ? "SERVERS" : "COST & USAGE")
+                .font(AppFonts.label)
+                .foregroundStyle(AppColors.textSecondary)
+            Spacer()
+            Button {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    appState.sidebarOpen = false
+                }
+            } label: {
+                Image(systemName: "sidebar.left")
+                    .foregroundStyle(AppColors.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .help("Collapse sidebar")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    // MARK: - Servers content (embedded server list)
+
+    private var serversContent: some View {
+        ServersPanelView(showHeader: false)
+    }
+
+    // MARK: - Cost nav content
+
+    private var costNavContent: some View {
+        VStack(spacing: 0) {
+            navButton(icon: "server.rack",    label: "Servers",     mode: .servers)
             navButton(icon: "chart.bar.xaxis", label: "Cost & Usage", mode: .cost)
 
             Spacer()
-
-            // Quick stats footer
-            if appState.sidebarMode == .cost {
-                costFooter
-            }
+            costFooter
         }
-        .frame(width: 200)
-        .background(AppColors.surface)
     }
 
     @ViewBuilder
     private func navButton(icon: String, label: String, mode: AppState.SidebarMode) -> some View {
-        @Bindable var state = appState
-        Button {
-            appState.sidebarMode = mode
-        } label: {
+        Button { appState.sidebarMode = mode } label: {
             HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .frame(width: 16)
-                Text(label)
-                    .font(AppFonts.prose)
+                Image(systemName: icon).frame(width: 16)
+                Text(label).font(AppFonts.prose)
                 Spacer()
             }
             .padding(.horizontal, 12)
@@ -88,9 +118,7 @@ struct SideDrawer: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                Button {
-                    Task { await nexlayer.fetchCredits() }
-                } label: {
+                Button { Task { await nexlayer.fetchCredits() } } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 10))
                         .foregroundStyle(AppColors.textSecondary)
@@ -107,9 +135,10 @@ struct SideDrawer: View {
 
     private var iconRail: some View {
         VStack(spacing: 0) {
-            // Expand toggle at top
             Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { appState.sidebarOpen = true }
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    appState.sidebarOpen = true
+                }
             } label: {
                 Image(systemName: "sidebar.left")
                     .foregroundStyle(AppColors.textSecondary)
@@ -120,12 +149,11 @@ struct SideDrawer: View {
 
             Divider().background(AppColors.border)
 
-            railIcon(icon: "server.rack",    mode: .servers)
+            railIcon(icon: "server.rack",     mode: .servers)
             railIcon(icon: "chart.bar.xaxis", mode: .cost)
 
             Spacer()
         }
-        .frame(width: 44)
         .background(AppColors.surface)
     }
 
@@ -135,9 +163,7 @@ struct SideDrawer: View {
             Image(systemName: icon)
                 .frame(width: 44, height: 36)
                 .foregroundStyle(appState.sidebarMode == mode ? AppColors.accent : AppColors.textSecondary)
-                .background(appState.sidebarMode == mode
-                            ? AppColors.accent.opacity(0.15)
-                            : Color.clear)
+                .background(appState.sidebarMode == mode ? AppColors.accent.opacity(0.15) : Color.clear)
         }
         .buttonStyle(.plain)
     }
