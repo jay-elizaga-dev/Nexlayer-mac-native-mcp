@@ -9,17 +9,32 @@ final class NexlayerService {
 
     private(set) var client: MCPClient?
 
-    var statusCache:  [String: DeploymentStatus] = [:]
-    var logsCache:    [String: String]            = [:]
-    var loading:      [String: Bool]              = [:]
-    var errors:       [String: String]            = [:]
-    var isSyncing:    Bool                        = false
+    var statusCache:       [String: DeploymentStatus] = [:]
+    var logsCache:         [String: String]            = [:]
+    var loading:           [String: Bool]              = [:]
+    var errors:            [String: String]            = [:]
+    var isSyncing:         Bool                        = false
+
+    // Cost tracking
+    var callHistory:       [ToolCallRecord]            = []
+    var credits:           String?                     = nil
+    var isCheckingCredits: Bool                        = false
 
     // MARK: - Models
 
     struct DeploymentStatus {
         var raw: String
         var fetchedAt: Date
+    }
+
+    struct ToolCallRecord: Identifiable {
+        var id:          UUID   = UUID()
+        var tool:        String
+        var deployment:  String          // nexlayerApp slug or "" for global calls
+        var timestamp:   Date   = Date()
+        var durationMs:  Int
+        var success:     Bool
+        var error:       String?
     }
 
     // MARK: - Setup
@@ -33,6 +48,33 @@ final class NexlayerService {
         statusCache.removeAll()
         logsCache.removeAll()
         errors.removeAll()
+        credits = nil
+    }
+
+    // MARK: - Credits
+
+    func fetchCredits() async {
+        isCheckingCredits = true
+        defer { isCheckingCredits = false }
+        do {
+            let text = try await call("nexlayer_check_credits", args: [:], deployment: "")
+            credits = text
+        } catch {
+            credits = "Error: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - CSV Export
+
+    func exportCSV() -> String {
+        var lines = ["id,tool,deployment,timestamp,duration_ms,success,error"]
+        let fmt = ISO8601DateFormatter()
+        for r in callHistory {
+            let ts  = fmt.string(from: r.timestamp)
+            let err = r.error?.replacingOccurrences(of: ",", with: ";") ?? ""
+            lines.append("\(r.id),\(r.tool),\(r.deployment),\(ts),\(r.durationMs),\(r.success),\(err)")
+        }
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Status
@@ -46,7 +88,7 @@ final class NexlayerService {
         do {
             var args: [String: Any] = ["applicationName": server.nexlayerApp]
             if !server.nexlayerDomain.isEmpty { args["domain"] = server.nexlayerDomain }
-            let text = try await call("nexlayer_check_deployment_status", args: args)
+            let text = try await call("nexlayer_check_deployment_status", args: args, deployment: key)
             statusCache[key] = DeploymentStatus(raw: text, fetchedAt: Date())
         } catch {
             errors[key] = error.localizedDescription
@@ -66,7 +108,7 @@ final class NexlayerService {
                 "domain": server.nexlayerDomain,
                 "pods": [["podName": podName, "previous": false]]
             ]
-            let text = try await call("nexlayer_get_deployment_logs", args: args)
+            let text = try await call("nexlayer_get_deployment_logs", args: args, deployment: server.nexlayerApp)
             logsCache[key] = text
         } catch {
             logsCache[key] = "Error: \(error.localizedDescription)"
@@ -80,7 +122,7 @@ final class NexlayerService {
             "domain": server.nexlayerDomain,
             "deployment": server.nexlayerApp
         ]
-        _ = try await call("nexlayer_debug_pod_restart_deployment", args: args)
+        _ = try await call("nexlayer_debug_pod_restart_deployment", args: args, deployment: server.nexlayerApp)
         // Refresh status after restart
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await fetchStatus(for: server)
@@ -91,7 +133,7 @@ final class NexlayerService {
     func fetchDeployments(namespace: String) async throws -> [AppState.ServerConfig] {
         isSyncing = true
         defer { isSyncing = false }
-        let text = try await call("nexlayer_debug_namespace_info", args: ["domain": namespace])
+        let text = try await call("nexlayer_debug_namespace_info", args: ["domain": namespace], deployment: "")
         let slugs = Self.parseDeploymentSlugs(from: text)
         return slugs.map { slug in
             AppState.ServerConfig(
@@ -172,15 +214,16 @@ final class NexlayerService {
 
     // MARK: - Private
 
-    private func call(_ tool: String, args: [String: Any]) async throws -> String {
+    private func call(_ tool: String, args: [String: Any], deployment: String = "") async throws -> String {
         guard let client else { throw NexlayerServiceError.notConnected }
 
         var attempt = 0
         var retryDelay: UInt64 = 1_000_000_000  // 1s → 2s (exponential)
+        let start = Date()
 
         while true {
             do {
-                return try await withThrowingTaskGroup(of: String.self) { group in
+                let result = try await withThrowingTaskGroup(of: String.self) { group in
                     group.addTask {
                         let result = try await client.callTool(name: tool, arguments: args)
                         return result.content.compactMap { $0.text }.joined(separator: "\n")
@@ -189,17 +232,24 @@ final class NexlayerService {
                         try await Task.sleep(nanoseconds: 10_000_000_000)  // 10s
                         throw NexlayerServiceError.callTimeout
                     }
-                    let result = try await group.next()!
+                    let r = try await group.next()!
                     group.cancelAll()
-                    return result
+                    return r
                 }
+                let ms = Int(Date().timeIntervalSince(start) * 1000)
+                callHistory.append(ToolCallRecord(tool: tool, deployment: deployment, durationMs: ms, success: true))
+                return result
             } catch NexlayerServiceError.callTimeout {
                 attempt += 1
-                guard attempt < 3 else { throw NexlayerServiceError.callTimeout }
+                guard attempt < 3 else {
+                    let ms = Int(Date().timeIntervalSince(start) * 1000)
+                    callHistory.append(ToolCallRecord(tool: tool, deployment: deployment, durationMs: ms, success: false, error: "timeout"))
+                    throw NexlayerServiceError.callTimeout
+                }
                 try await Task.sleep(nanoseconds: retryDelay)
                 retryDelay *= 2  // 1s, 2s
             }
-            // Non-timeout errors (server errors, auth failures) surface immediately.
+            // Non-timeout errors surface immediately.
         }
     }
 }

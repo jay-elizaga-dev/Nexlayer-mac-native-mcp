@@ -12,6 +12,15 @@ class AppState {
     var lastToolResult: OutputResult? = nil
     var lastCalledTool: String? = nil
 
+    // Drawer + navigation
+    var sidebarOpen: Bool = true
+
+    enum SidebarMode { case servers, cost }
+    var sidebarMode: SidebarMode = .servers
+
+    // Cost detail selection (deployment name)
+    var selectedCostReport: String? = nil
+
     init() {
         servers = store.load()
         if servers.isEmpty {

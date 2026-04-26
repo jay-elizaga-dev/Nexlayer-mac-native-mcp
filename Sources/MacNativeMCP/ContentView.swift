@@ -28,8 +28,25 @@ struct ContentView: View {
     }
 
     private var mainUI: some View {
+        HStack(spacing: 0) {
+            SideDrawer()
+
+            Divider().background(AppColors.border)
+
+            if appState.sidebarMode == .cost {
+                costLayout
+            } else {
+                serverLayout
+            }
+        }
+        .background(AppColors.background)
+    }
+
+    // MARK: - Layouts
+
+    private var serverLayout: some View {
         HSplitView {
-            ServersPanelView()
+            serversPanelIfNeeded
                 .frame(minWidth: 220, maxWidth: 260)
 
             centerPanel
@@ -38,8 +55,50 @@ struct ContentView: View {
             rightPanel
                 .frame(minWidth: 280)
         }
-        .background(AppColors.background)
     }
+
+    @ViewBuilder
+    private var serversPanelIfNeeded: some View {
+        if appState.sidebarOpen {
+            // Drawer is open and showing servers nav — embed the server list inside the split
+            ServersPanelView()
+        } else {
+            // Icon rail is visible, server list goes in main split
+            ServersPanelView()
+        }
+    }
+
+    private var costLayout: some View {
+        HSplitView {
+            CostReportsView()
+                .frame(minWidth: 460)
+
+            if let dep = appState.selectedCostReport {
+                CostDetailView(deployment: dep)
+                    .frame(minWidth: 280)
+            } else {
+                costDetailPlaceholder
+                    .frame(minWidth: 280)
+            }
+        }
+    }
+
+    private var costDetailPlaceholder: some View {
+        VStack {
+            Spacer()
+            Image(systemName: "hand.point.left")
+                .font(.system(size: 28))
+                .foregroundStyle(AppColors.textSecondary)
+            Text("Select a deployment to see call details")
+                .font(AppFonts.label)
+                .foregroundStyle(AppColors.textSecondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .background(AppColors.surface)
+    }
+
+    // MARK: - Center / right panels (servers mode)
 
     @ViewBuilder
     private var centerPanel: some View {
@@ -57,11 +116,25 @@ struct ContentView: View {
            let session = chatForActiveServer {
             ServerChatView(chatId: session.id, server: server)
         } else {
-            OutputPanelView()
+            emptyRightPanel
         }
     }
 
-    /// Returns the active chat session for the selected server (prefers activeChatId, falls back to latest).
+    private var emptyRightPanel: some View {
+        VStack {
+            Spacer()
+            Image(systemName: "bubble.left")
+                .font(.system(size: 28))
+                .foregroundStyle(AppColors.textSecondary)
+            Text("Select a server and start a chat")
+                .font(AppFonts.label)
+                .foregroundStyle(AppColors.textSecondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .background(AppColors.surface)
+    }
+
     private var chatForActiveServer: AppState.ChatSession? {
         guard let serverId = appState.activeServerId else { return nil }
         if let id = appState.activeChatId,
