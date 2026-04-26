@@ -108,41 +108,24 @@ struct SideDrawer: View {
     }
 
     private var creditsRow: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "creditcard")
-                .font(.system(size: 10))
-                .foregroundStyle(AppColors.textSecondary)
-            if nexlayer.isCheckingCredits || nexlayer.isEstablishingSession {
-                ProgressView().scaleEffect(0.5).frame(width: 12, height: 12)
-                Text(nexlayer.isEstablishingSession ? "Signing in…" : "Checking…")
-                    .font(AppFonts.label)
-                    .foregroundStyle(AppColors.textSecondary)
-            } else if let credits = nexlayer.credits {
-                let line = firstLine(credits) ?? credits
-                let isErr = line.lowercased().contains("error") || line.lowercased().contains("sign in")
-                Text(isErr ? "Sign in required" : line)
-                    .font(AppFonts.label)
-                    .foregroundStyle(isErr ? AppColors.danger : AppColors.textSecondary)
-                    .lineLimit(1)
-            } else {
-                Text("—").font(AppFonts.label).foregroundStyle(AppColors.textSecondary)
-            }
-            Spacer()
-            Button {
-                Task {
-                    if nexlayer.jwtToken == nil { await nexlayer.establishSession() }
-                    await nexlayer.fetchCredits()
-                }
-            } label: {
-                Image(systemName: "arrow.clockwise")
+        Button {
+            NSWorkspace.shared.open(URL(string: "https://app.nexlayer.com/settings")!)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "creditcard")
                     .font(.system(size: 10))
                     .foregroundStyle(AppColors.textSecondary)
+                Text("View credits →")
+                    .font(AppFonts.label)
+                    .foregroundStyle(AppColors.accent)
+                    .lineLimit(1)
+                Spacer()
             }
-            .buttonStyle(.plain)
-            .disabled(nexlayer.isCheckingCredits || nexlayer.isEstablishingSession)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
+        .buttonStyle(.plain)
+        .help("Credits require account sign-in — opens app.nexlayer.com/settings")
     }
 
     // MARK: - User avatar row (expanded)

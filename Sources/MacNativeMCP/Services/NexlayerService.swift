@@ -20,9 +20,10 @@ final class NexlayerService {
     var credits:           String?                     = nil
     var isCheckingCredits: Bool                        = false
 
-    // JWT session (required by nexlayer_check_credits and other user-scoped tools)
-    private(set) var jwtToken: String?                 = nil
-    var isEstablishingSession: Bool                    = false
+    // NOTE: nexlayer_check_credits / nexlayer_get_jwt_token require OAuth session params
+    // that are auto-injected only in the official Claude integration — not available via
+    // API key Bearer auth. Credits are not accessible from the native app.
+    static let creditsUnavailableMessage = "Credits require sign-in at app.nexlayer.com"
 
     // MARK: - Models
 
@@ -45,8 +46,6 @@ final class NexlayerService {
 
     func setClient(_ client: MCPClient) {
         self.client = client
-        // Establish user session automatically after connecting
-        Task { await establishSession() }
     }
 
     func reset() {
@@ -55,43 +54,14 @@ final class NexlayerService {
         logsCache.removeAll()
         errors.removeAll()
         credits = nil
-        jwtToken = nil
-    }
-
-    // MARK: - Session
-
-    /// Call nexlayer_get_jwt_token to bind a userId to this MCP session.
-    /// Required before user-scoped tools like nexlayer_check_credits work.
-    func establishSession() async {
-        guard let client, client.tools.contains(where: { $0.name == "nexlayer_get_jwt_token" }) else { return }
-        isEstablishingSession = true
-        defer { isEstablishingSession = false }
-        do {
-            let text = try await call("nexlayer_get_jwt_token", args: [:], deployment: "")
-            if !text.isEmpty { jwtToken = text }
-        } catch {
-            // Non-fatal — session establishment failed; credits will show an error
-        }
     }
 
     // MARK: - Credits
 
+    /// Credits require OAuth session params that are only available in the official
+    /// Claude MCP integration. With API key auth, this always returns the unavailable message.
     func fetchCredits() async {
-        isCheckingCredits = true
-        defer { isCheckingCredits = false }
-        do {
-            let text = try await call("nexlayer_check_credits", args: [:], deployment: "")
-            if text.lowercased().contains("no userid") || text.lowercased().contains("sign in") {
-                // Session not established yet — retry after obtaining JWT
-                await establishSession()
-                let retry = try await call("nexlayer_check_credits", args: [:], deployment: "")
-                credits = retry
-            } else {
-                credits = text
-            }
-        } catch {
-            credits = "Error: \(error.localizedDescription)"
-        }
+        credits = NexlayerService.creditsUnavailableMessage
     }
 
     // MARK: - CSV Export

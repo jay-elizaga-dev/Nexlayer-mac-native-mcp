@@ -16,7 +16,6 @@ struct CostReportsView: View {
             }
         }
         .background(AppColors.background)
-        .task { if nexlayer.credits == nil { await nexlayer.fetchCredits() } }
     }
 
     // MARK: - Header
@@ -27,7 +26,15 @@ struct CostReportsView: View {
                 Text("Cost & Usage")
                     .font(AppFonts.heading)
                     .foregroundStyle(AppColors.textPrimary)
-                creditsLine
+                // Credits require OAuth — link to web dashboard
+                Button {
+                    NSWorkspace.shared.open(URL(string: "https://app.nexlayer.com/settings")!)
+                } label: {
+                    Text("View account credits at app.nexlayer.com →")
+                        .font(AppFonts.label)
+                        .foregroundStyle(AppColors.accent)
+                }
+                .buttonStyle(.plain)
             }
             Spacer()
             Button(action: exportCSV) {
@@ -39,18 +46,6 @@ struct CostReportsView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
-    }
-
-    @ViewBuilder
-    private var creditsLine: some View {
-        if nexlayer.isCheckingCredits {
-            ProgressView().scaleEffect(0.6).frame(height: 14)
-        } else if let credits = nexlayer.credits {
-            Text(firstLine(credits) ?? credits)
-                .font(AppFonts.label)
-                .foregroundStyle(AppColors.textSecondary)
-                .lineLimit(1)
-        }
     }
 
     // MARK: - Empty state
