@@ -18,6 +18,9 @@ final class NexlayerService {
 
     // Cost tracking
     var callHistory:       [ToolCallRecord]            = []
+    /// Deployment slugs discovered via namespace scan (supplements callHistory)
+    var discoveredDeployments: [String]                = []
+    var isDiscovering:     Bool                        = false
 
     // Billing
     var creditBalance:     CreditBalance?              = nil
@@ -73,6 +76,29 @@ final class NexlayerService {
         errors.removeAll()
         creditBalance = nil
         sessionToken = nil
+        discoveredDeployments = []
+    }
+
+    // MARK: - Deployment discovery
+
+    /// Scans the given namespaces (Nexlayer domains) for all deployed services
+    /// and merges them into `discoveredDeployments`. Safe to call repeatedly.
+    func discoverDeployments(for domains: [String]) async {
+        let unique = Array(Set(domains.filter { !$0.isEmpty }))
+        guard !unique.isEmpty else { return }
+        isDiscovering = true
+        defer { isDiscovering = false }
+        for domain in unique {
+            do {
+                let text = try await call("nexlayer_debug_namespace_info", args: ["domain": domain], deployment: "")
+                let slugs = Self.parseDeploymentSlugs(from: text)
+                for slug in slugs where !discoveredDeployments.contains(slug) {
+                    discoveredDeployments.append(slug)
+                }
+            } catch {
+                // Discovery is best-effort; ignore per-namespace failures
+            }
+        }
     }
 
     // MARK: - Credits (works with API key auth — no OAuth required)

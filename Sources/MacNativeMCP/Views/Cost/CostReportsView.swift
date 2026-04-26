@@ -25,23 +25,34 @@ struct CostReportsView: View {
 
             Divider().background(AppColors.border)
 
-            if nexlayer.callHistory.isEmpty {
+            if allDeploymentNames.isEmpty {
                 emptyState
             } else {
                 summaryTable
             }
         }
         .background(AppColors.background)
+        .task { await discoverIfNeeded() }
     }
 
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Text("Cost & Usage")
                 .font(AppFonts.heading)
                 .foregroundStyle(AppColors.textPrimary)
             Spacer()
+            Button(action: { Task { await discoverAll() } }) {
+                if nexlayer.isDiscovering {
+                    ProgressView().scaleEffect(0.7).frame(width: 16, height: 16)
+                } else {
+                    Label("Discover", systemImage: "arrow.clockwise")
+                        .font(AppFonts.label)
+                }
+            }
+            .buttonStyle(.bordered)
+            .help("Scan Nexlayer namespaces to discover all deployed services")
             Button(action: exportCSV) {
                 Label("Export CSV", systemImage: "square.and.arrow.up")
                     .font(AppFonts.label)
@@ -112,22 +123,31 @@ struct CostReportsView: View {
 
     @ViewBuilder
     private func summaryRow(_ s: DeploymentSummary) -> some View {
+        let hasCalls = s.callCount > 0
         HStack(spacing: 0) {
             Text(s.deployment.isEmpty ? "(global)" : s.deployment)
                 .font(AppFonts.code)
                 .foregroundStyle(AppColors.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text("\(s.callCount)").frame(width: 55, alignment: .trailing)
-                .foregroundStyle(AppColors.textPrimary)
-            Text("\(s.totalTokens)").frame(width: 70, alignment: .trailing)
+            Text(hasCalls ? "\(s.callCount)" : "—")
+                .frame(width: 55, alignment: .trailing)
+                .foregroundStyle(hasCalls ? AppColors.textPrimary : AppColors.textSecondary)
+            Text(hasCalls ? "\(s.totalTokens)" : "—")
+                .frame(width: 70, alignment: .trailing)
                 .foregroundStyle(s.totalTokens > 0 ? AppColors.textPrimary : AppColors.textSecondary)
-            Text(formatCost(s.totalTokens)).frame(width: 80, alignment: .trailing)
+            Text(hasCalls ? formatCost(s.totalTokens) : "—")
+                .frame(width: 80, alignment: .trailing)
                 .foregroundStyle(s.totalTokens > 0 ? AppColors.warning : AppColors.textSecondary)
-            Text(String(format: "%.0f%%", s.successRate * 100)).frame(width: 75, alignment: .trailing)
-                .foregroundStyle(s.successRate > 0.9 ? AppColors.success : AppColors.danger)
-            Text("\(s.avgDurationMs)").frame(width: 80, alignment: .trailing)
+            Text(hasCalls ? String(format: "%.0f%%", s.successRate * 100) : "—")
+                .frame(width: 75, alignment: .trailing)
+                .foregroundStyle(hasCalls
+                    ? (s.successRate > 0.9 ? AppColors.success : AppColors.danger)
+                    : AppColors.textSecondary)
+            Text(hasCalls ? "\(s.avgDurationMs)" : "—")
+                .frame(width: 80, alignment: .trailing)
                 .foregroundStyle(AppColors.textSecondary)
-            Text(relativeDate(s.lastCall)).frame(width: 120, alignment: .trailing)
+            Text(hasCalls ? relativeDate(s.lastCall) : "no calls yet")
+                .frame(width: 120, alignment: .trailing)
                 .foregroundStyle(AppColors.textSecondary)
         }
         .font(AppFonts.prose)
@@ -152,10 +172,23 @@ struct CostReportsView: View {
         var lastCall: Date
     }
 
+    /// All unique deployment names from history + configured servers + discovered services.
+    private var allDeploymentNames: Set<String> {
+        var names = Set(nexlayer.callHistory.filter { !$0.deployment.isEmpty }.map(\.deployment))
+        for server in appState.servers where !server.nexlayerApp.isEmpty {
+            names.insert(server.nexlayerApp)
+        }
+        for slug in nexlayer.discoveredDeployments where !slug.isEmpty {
+            names.insert(slug)
+        }
+        return names
+    }
+
     private var deploymentSummaries: [DeploymentSummary] {
         let nonGlobal = nexlayer.callHistory.filter { !$0.deployment.isEmpty }
         let grouped = Dictionary(grouping: nonGlobal, by: \.deployment)
-        return grouped.map { dep, records in
+
+        var summaries: [DeploymentSummary] = grouped.map { dep, records in
             let successful = records.filter(\.success).count
             let avg = records.isEmpty ? 0 : records.map(\.durationMs).reduce(0, +) / records.count
             let last = records.map(\.timestamp).max() ?? Date()
@@ -169,7 +202,27 @@ struct CostReportsView: View {
                 lastCall: last
             )
         }
-        .sorted { $0.lastCall > $1.lastCall }
+
+        // Add placeholder rows for every known deployment with no call history yet
+        let withHistory = Set(summaries.map(\.deployment))
+        for name in allDeploymentNames where !withHistory.contains(name) {
+            summaries.append(DeploymentSummary(
+                deployment: name,
+                callCount: 0,
+                totalTokens: 0,
+                successRate: 1.0,
+                avgDurationMs: 0,
+                lastCall: .distantPast
+            ))
+        }
+
+        return summaries.sorted {
+            // Services with call history first, sorted by recency; then alpha
+            if $0.callCount > 0 && $1.callCount == 0 { return true }
+            if $0.callCount == 0 && $1.callCount > 0 { return false }
+            if $0.callCount > 0 { return $0.lastCall > $1.lastCall }
+            return $0.deployment < $1.deployment
+        }
     }
 
     private var globalSummary: DeploymentSummary {
@@ -186,6 +239,18 @@ struct CostReportsView: View {
             avgDurationMs: avg,
             lastCall: last
         )
+    }
+
+    // MARK: - Discovery
+
+    private func discoverIfNeeded() async {
+        guard nexlayer.discoveredDeployments.isEmpty else { return }
+        await discoverAll()
+    }
+
+    private func discoverAll() async {
+        let domains = Set(appState.servers.map(\.nexlayerDomain).filter { !$0.isEmpty })
+        await nexlayer.discoverDeployments(for: Array(domains))
     }
 
     // MARK: - Helpers
