@@ -22,11 +22,16 @@ final class AuthManager {
     private(set) var storedKey: String?
     private(set) var nexlayerClient: MCPClient?
 
-    /// Web session token from NextAuth.js cookie — enables OAuth-required tools.
+    /// Web session token — set after account linking via WebView or OAuth.
     private(set) var webSessionToken: String?
     var isWebSessionLinked: Bool { webSessionToken != nil }
 
+    /// Which account-linking method was used.
+    enum LinkMethod { case none, webView, oauth }
+    private(set) var linkMethod: LinkMethod = .none
+
     private var webSignInWindow: WebSignInWindow?
+    private(set) var oauthManager = OAuthManager()
 
     private let nexlayerURL = URL(string: "https://mcp.nexlayer.ai/api/mcp")!
     private let keychainService = "dev.elizaga.mac-native-mcp"
@@ -83,6 +88,8 @@ final class AuthManager {
         deleteSessionTokenFromKeychain()
         currentAPIKey = nil
         webSessionToken = nil
+        linkMethod = .none
+        oauthManager.signOut()
         state = .unauthenticated
     }
 
@@ -92,14 +99,37 @@ final class AuthManager {
 
     // MARK: - Web sign-in (OAuth session for account-level tools)
 
-    /// Opens app.nexlayer.com in a WKWebView window.
-    /// After login, extracts the NextAuth.js session cookie and stores it.
+    /// Opens account linking — uses proper OAuth (ASWebAuthenticationSession) when
+    /// OAuthManager is configured; falls back to WKWebView otherwise.
     func openWebSignIn(from parentWindow: NSWindow? = nil) {
+        if oauthManager.isConfigured {
+            Task { await performOAuth(from: parentWindow) }
+        } else {
+            openWKWebViewSignIn(from: parentWindow)
+        }
+    }
+
+    private func performOAuth(from parentWindow: NSWindow?) async {
+        do {
+            let token = try await oauthManager.authorize(from: parentWindow ?? NSApp.keyWindow)
+            webSessionToken = token
+            linkMethod = .oauth
+            saveSessionTokenToKeychain(token)
+        } catch OAuthError.userCancelled {
+            // User dismissed — no state change
+        } catch {
+            // Surface error to UI via a new state? For now just print.
+            print("[AuthManager] OAuth error: \(error.localizedDescription)")
+        }
+    }
+
+    private func openWKWebViewSignIn(from parentWindow: NSWindow?) {
         webSignInWindow?.close()
         let win = WebSignInWindow()
         win.onSignIn = { [weak self] token in
             Task { @MainActor [weak self] in
                 self?.webSessionToken = token
+                self?.linkMethod = .webView
                 self?.saveSessionTokenToKeychain(token)
             }
         }
@@ -109,6 +139,8 @@ final class AuthManager {
 
     func unlinkWebSession() {
         webSessionToken = nil
+        linkMethod = .none
+        oauthManager.signOut()
         deleteSessionTokenFromKeychain()
     }
 
