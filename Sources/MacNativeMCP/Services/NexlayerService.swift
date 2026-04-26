@@ -174,12 +174,31 @@ final class NexlayerService {
 
     private func call(_ tool: String, args: [String: Any]) async throws -> String {
         guard let client else { throw NexlayerServiceError.notConnected }
-        let result = try await client.callTool(name: tool, arguments: args)
-        return result.content.compactMap { $0.text }.joined(separator: "\n")
+
+        // 30-second timeout per tool call — if the receive loop stalls, fail fast.
+        return try await withThrowingTaskGroup(of: String.self) { group in
+            group.addTask {
+                let result = try await client.callTool(name: tool, arguments: args)
+                return result.content.compactMap { $0.text }.joined(separator: "\n")
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 30_000_000_000)
+                throw NexlayerServiceError.callTimeout
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
     }
 }
 
 enum NexlayerServiceError: Error, LocalizedError {
     case notConnected
-    var errorDescription: String? { "Nexlayer MCP client is not connected" }
+    case callTimeout
+    var errorDescription: String? {
+        switch self {
+        case .notConnected: return "Nexlayer MCP client is not connected"
+        case .callTimeout:  return "Tool call timed out (30s) — check your connection"
+        }
+    }
 }

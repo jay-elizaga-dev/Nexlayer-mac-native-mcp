@@ -148,17 +148,22 @@ final class MCPClient {
     private func startReceiveLoop() {
         guard let transport else { return }
         Task {
-            do {
-                while true {
+            while true {
+                do {
                     let data = try await transport.receive()
                     guard
                         let response = try? JSONDecoder().decode(JSONRPCResponse.self, from: data),
                         let id = response.id
                     else { continue }
                     await pending.resume(id: id, with: response)
+                } catch HTTPTransportError.timeout {
+                    // No data arrived this cycle — keep looping; don't exit the loop.
+                    continue
+                } catch {
+                    // Real transport error — cancel all pending requests and stop.
+                    await pending.cancelAll(throwing: error)
+                    return
                 }
-            } catch {
-                await pending.cancelAll(throwing: error)
             }
         }
     }
