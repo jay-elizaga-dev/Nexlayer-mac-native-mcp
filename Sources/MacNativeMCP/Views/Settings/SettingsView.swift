@@ -5,6 +5,8 @@ struct SettingsView: View {
         TabView {
             ServersSettingsTab()
                 .tabItem { Label("Servers", systemImage: "server.rack") }
+            NexlayerSettingsTab()
+                .tabItem { Label("Nexlayer", systemImage: "cloud") }
             AppearanceSettingsTab()
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
         }
@@ -94,6 +96,20 @@ private struct ServerRow: View {
                 }
         }
         .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Nexlayer Tab
+
+private struct NexlayerSettingsTab: View {
+    @AppStorage("nexlayerNamespace") private var namespace: String = "amiable-beetle"
+
+    var body: some View {
+        Form {
+            TextField("Default Namespace", text: $namespace, prompt: Text("e.g. amiable-beetle"))
+        }
+        .formStyle(.grouped)
+        .padding()
     }
 }
 

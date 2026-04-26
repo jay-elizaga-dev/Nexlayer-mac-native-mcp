@@ -35,7 +35,7 @@ struct MacNativeMCPApp: App {
                         nexlayerService.sessionToken = authManager.webSessionToken
                         // Auto-sync deployments from Nexlayer after auth
                         Task {
-                            if let configs = try? await nexlayerService.fetchDeployments(namespace: "amiable-beetle") {
+                            if let configs = try? await nexlayerService.fetchDeployments(namespace: UserDefaults.standard.string(forKey: "nexlayerNamespace") ?? "amiable-beetle") {
                                 appState.syncDeployments(configs)
                             }
                         }

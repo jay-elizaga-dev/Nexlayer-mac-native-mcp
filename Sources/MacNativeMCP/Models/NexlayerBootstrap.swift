@@ -5,7 +5,7 @@ import Foundation
 /// **Internal only** — this namespace is private infrastructure and must never ship
 /// in production/staging builds. Public users start with an empty server list.
 enum NexlayerBootstrap {
-    private static let namespace = "amiable-beetle"
+    private static let namespace = UserDefaults.standard.string(forKey: "nexlayerNamespace") ?? "amiable-beetle"
 
     /// Returns the default server list for internal builds, empty for public builds.
     static var defaultServers: [AppState.ServerConfig] {

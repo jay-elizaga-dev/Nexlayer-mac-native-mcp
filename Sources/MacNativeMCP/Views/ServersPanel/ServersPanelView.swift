@@ -64,7 +64,7 @@ struct ServersPanelView: View {
     private var syncButton: some View {
         Button {
             Task {
-                if let configs = try? await nexlayer.fetchDeployments(namespace: "amiable-beetle") {
+                if let configs = try? await nexlayer.fetchDeployments(namespace: UserDefaults.standard.string(forKey: "nexlayerNamespace") ?? "amiable-beetle") {
                     appState.syncDeployments(configs)
                 }
             }
