@@ -20,10 +20,12 @@ final class NexlayerService {
     var credits:           String?                     = nil
     var isCheckingCredits: Bool                        = false
 
-    // NOTE: nexlayer_check_credits / nexlayer_get_jwt_token require OAuth session params
-    // that are auto-injected only in the official Claude integration — not available via
-    // API key Bearer auth. Credits are not accessible from the native app.
-    static let creditsUnavailableMessage = "Credits require sign-in at app.nexlayer.com"
+    /// NextAuth.js session token — set after web sign-in. Enables OAuth-required tools.
+    var sessionToken: String?
+
+    // NOTE: nexlayer_check_credits requires sessionToken (NextAuth.js cookie).
+    // With no web session, credits are not accessible from the native app.
+    static let creditsUnavailableMessage = "Credits require account link — tap Link Account in the user menu"
 
     // MARK: - Models
 
@@ -54,14 +56,27 @@ final class NexlayerService {
         logsCache.removeAll()
         errors.removeAll()
         credits = nil
+        sessionToken = nil
     }
 
     // MARK: - Credits
 
-    /// Credits require OAuth session params that are only available in the official
-    /// Claude MCP integration. With API key auth, this always returns the unavailable message.
+    /// Attempts to fetch credits using the web session token if available.
+    /// Falls back to the unavailable message if no session is linked.
     func fetchCredits() async {
-        credits = NexlayerService.creditsUnavailableMessage
+        guard let token = sessionToken, !token.isEmpty else {
+            credits = NexlayerService.creditsUnavailableMessage
+            return
+        }
+        isCheckingCredits = true
+        defer { isCheckingCredits = false }
+        do {
+            let args: [String: Any] = ["sessionToken": token]
+            let text = try await call("nexlayer_check_credits", args: args, deployment: "")
+            credits = text
+        } catch {
+            credits = "Could not fetch credits: \(error.localizedDescription)"
+        }
     }
 
     // MARK: - CSV Export

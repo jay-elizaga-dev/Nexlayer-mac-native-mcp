@@ -135,9 +135,16 @@ struct SideDrawer: View {
             HStack(spacing: 8) {
                 userAvatar(size: 26)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(auth.state == .authenticated ? "Signed in" : "Not signed in")
-                        .font(AppFonts.label)
-                        .foregroundStyle(AppColors.textPrimary)
+                    HStack(spacing: 4) {
+                        Text(auth.state == .authenticated ? "Signed in" : "Not signed in")
+                            .font(AppFonts.label)
+                            .foregroundStyle(AppColors.textPrimary)
+                        if auth.isWebSessionLinked {
+                            Image(systemName: "link.circle.fill")
+                                .font(.system(size: 9))
+                                .foregroundStyle(AppColors.success)
+                        }
+                    }
                     if let key = auth.currentAPIKey, key.count >= 4 {
                         Text("•••• \(String(key.suffix(4)))")
                             .font(.system(size: 9))
@@ -244,6 +251,29 @@ struct SideDrawer: View {
             Divider().background(AppColors.border)
 
             if auth.state == .authenticated {
+                // Web session link
+                if auth.isWebSessionLinked {
+                    menuItem(label: "Account Linked ✓", icon: "checkmark.shield.fill", danger: false) { }
+                        .disabled(true)
+                    menuItem(label: "Unlink Account", icon: "link.badge.minus", danger: false) {
+                        showUserMenu = false
+                        auth.unlinkWebSession()
+                    }
+                } else {
+                    menuItem(label: "Link Nexlayer Account", icon: "link", danger: false) {
+                        showUserMenu = false
+                        auth.openWebSignIn()
+                    }
+                    Text("Links your account to enable credits & API key management")
+                        .font(.system(size: 10))
+                        .foregroundStyle(AppColors.textSecondary)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 6)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Divider().background(AppColors.border)
+
                 menuItem(label: "Sign Out", icon: "rectangle.portrait.and.arrow.right", danger: true) {
                     showUserMenu = false
                     auth.signOut()

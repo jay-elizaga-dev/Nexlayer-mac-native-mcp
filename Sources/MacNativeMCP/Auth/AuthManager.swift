@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import Observation
 import Security
+import WebKit
 
 @Observable
 @MainActor
@@ -21,9 +22,16 @@ final class AuthManager {
     private(set) var storedKey: String?
     private(set) var nexlayerClient: MCPClient?
 
+    /// Web session token from NextAuth.js cookie — enables OAuth-required tools.
+    private(set) var webSessionToken: String?
+    var isWebSessionLinked: Bool { webSessionToken != nil }
+
+    private var webSignInWindow: WebSignInWindow?
+
     private let nexlayerURL = URL(string: "https://mcp.nexlayer.ai/api/mcp")!
     private let keychainService = "dev.elizaga.mac-native-mcp"
     private let keychainAccount = "nexlayer-api-key"
+    private let keychainSessionAccount = "nexlayer-session-token"
 
     init() {
         #if DEBUG
@@ -31,6 +39,8 @@ final class AuthManager {
         #endif
         // Load stored key for pre-fill only — never auto-connect on startup.
         storedKey = loadFromKeychain()
+        // Restore session token if previously linked.
+        webSessionToken = loadSessionTokenFromKeychain()
     }
 
     // MARK: - dev.env loader (DEBUG only)
@@ -70,12 +80,36 @@ final class AuthManager {
 
     func signOut() {
         deleteFromKeychain()
+        deleteSessionTokenFromKeychain()
         currentAPIKey = nil
+        webSessionToken = nil
         state = .unauthenticated
     }
 
     func retry() {
         state = .unauthenticated
+    }
+
+    // MARK: - Web sign-in (OAuth session for account-level tools)
+
+    /// Opens app.nexlayer.com in a WKWebView window.
+    /// After login, extracts the NextAuth.js session cookie and stores it.
+    func openWebSignIn(from parentWindow: NSWindow? = nil) {
+        webSignInWindow?.close()
+        let win = WebSignInWindow()
+        win.onSignIn = { [weak self] token in
+            Task { @MainActor [weak self] in
+                self?.webSessionToken = token
+                self?.saveSessionTokenToKeychain(token)
+            }
+        }
+        win.present(from: parentWindow ?? NSApp.keyWindow)
+        webSignInWindow = win
+    }
+
+    func unlinkWebSession() {
+        webSessionToken = nil
+        deleteSessionTokenFromKeychain()
     }
 
     // MARK: - Connect
@@ -133,6 +167,45 @@ final class AuthManager {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
             kSecAttrAccount as String: keychainAccount
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    // MARK: - Keychain (session token)
+
+    private func saveSessionTokenToKeychain(_ token: String) {
+        guard let data = token.data(using: .utf8) else { return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainSessionAccount,
+            kSecValueData as String: data
+        ]
+        SecItemDelete(query as CFDictionary)
+        SecItemAdd(query as CFDictionary, nil)
+    }
+
+    private func loadSessionTokenFromKeychain() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainSessionAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let token = String(data: data, encoding: .utf8)
+        else { return nil }
+        return token
+    }
+
+    private func deleteSessionTokenFromKeychain() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainSessionAccount
         ]
         SecItemDelete(query as CFDictionary)
     }

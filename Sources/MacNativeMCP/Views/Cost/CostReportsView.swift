@@ -4,6 +4,7 @@ import AppKit
 struct CostReportsView: View {
     @Environment(AppState.self) var appState
     @Environment(NexlayerService.self) var nexlayer
+    @Environment(AuthManager.self) var auth
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,15 +27,7 @@ struct CostReportsView: View {
                 Text("Cost & Usage")
                     .font(AppFonts.heading)
                     .foregroundStyle(AppColors.textPrimary)
-                // Credits require OAuth — link to web dashboard
-                Button {
-                    NSWorkspace.shared.open(URL(string: "https://app.nexlayer.com/settings")!)
-                } label: {
-                    Text("View account credits at app.nexlayer.com →")
-                        .font(AppFonts.label)
-                        .foregroundStyle(AppColors.accent)
-                }
-                .buttonStyle(.plain)
+                creditsLine
             }
             Spacer()
             Button(action: exportCSV) {
@@ -46,6 +39,51 @@ struct CostReportsView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
+        .task(id: auth.isWebSessionLinked) {
+            if auth.isWebSessionLinked {
+                nexlayer.sessionToken = auth.webSessionToken
+                await nexlayer.fetchCredits()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var creditsLine: some View {
+        if nexlayer.isCheckingCredits {
+            HStack(spacing: 4) {
+                ProgressView().scaleEffect(0.6)
+                Text("Checking credits…")
+                    .font(AppFonts.label)
+                    .foregroundStyle(AppColors.textSecondary)
+            }
+        } else if let credits = nexlayer.credits,
+                  credits != NexlayerService.creditsUnavailableMessage {
+            Text(credits)
+                .font(AppFonts.label)
+                .foregroundStyle(AppColors.textPrimary)
+                .lineLimit(2)
+        } else {
+            // Not linked or unavailable
+            if auth.isWebSessionLinked {
+                Button {
+                    Task { await nexlayer.fetchCredits() }
+                } label: {
+                    Text("Refresh credits")
+                        .font(AppFonts.label)
+                        .foregroundStyle(AppColors.accent)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button {
+                    auth.openWebSignIn()
+                } label: {
+                    Text("Link account to view credits →")
+                        .font(AppFonts.label)
+                        .foregroundStyle(AppColors.accent)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     // MARK: - Empty state

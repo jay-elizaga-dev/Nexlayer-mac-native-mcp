@@ -31,6 +31,8 @@ struct MacNativeMCPApp: App {
                         if let client = authManager.nexlayerClient {
                             nexlayerService.setClient(client)
                         }
+                        // Restore web session token if previously linked
+                        nexlayerService.sessionToken = authManager.webSessionToken
                         // Auto-sync deployments from Nexlayer after auth
                         Task {
                             if let configs = try? await nexlayerService.fetchDeployments(namespace: "amiable-beetle") {
@@ -40,6 +42,12 @@ struct MacNativeMCPApp: App {
                     } else {
                         serverManager.apiKey = nil
                         nexlayerService.reset()
+                    }
+                }
+                .onChange(of: authManager.webSessionToken) { _, token in
+                    nexlayerService.sessionToken = token
+                    if token != nil {
+                        Task { await nexlayerService.fetchCredits() }
                     }
                 }
         }
