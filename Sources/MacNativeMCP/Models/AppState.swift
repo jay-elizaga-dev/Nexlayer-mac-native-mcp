@@ -50,6 +50,11 @@ class AppState {
         var envVars: [String: String] = [:]
         // http fields
         var url: String = ""
+        // nexlayer metadata
+        var nexlayerDomain: String = ""
+        var nexlayerApp: String = ""
+
+        var isNexlayerDeployment: Bool { !nexlayerDomain.isEmpty && !nexlayerApp.isEmpty }
     }
 
     struct ConversationMessage: Identifiable {

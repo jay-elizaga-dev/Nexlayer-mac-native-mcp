@@ -17,6 +17,7 @@ final class AuthManager {
     var state: State = .checking
     var currentAPIKey: String?
     var devEnvKey: String?
+    private(set) var nexlayerClient: MCPClient?
 
     private let nexlayerURL = URL(string: "https://mcp.nexlayer.ai/api/mcp")!
     private let keychainService = "dev.elizaga.mac-native-mcp"
@@ -98,6 +99,7 @@ final class AuthManager {
             }
             if saveOnSuccess { saveToKeychain(apiKey) }
             currentAPIKey = apiKey
+            nexlayerClient = client
             state = .authenticated
         } catch {
             state = .error("Connection failed: \(error.localizedDescription)")

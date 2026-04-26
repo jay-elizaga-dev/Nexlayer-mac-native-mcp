@@ -28,7 +28,9 @@ enum NexlayerBootstrap {
             AppState.ServerConfig(
                 name: item.name,
                 transport: .http,
-                url: "https://\(namespace)-\(item.slug).cloud.nexlayer.ai"
+                url: "https://\(namespace)-\(item.slug).cloud.nexlayer.ai",
+                nexlayerDomain: namespace,
+                nexlayerApp: item.slug
             )
         }
     }

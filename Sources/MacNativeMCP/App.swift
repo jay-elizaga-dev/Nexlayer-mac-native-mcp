@@ -4,6 +4,7 @@ struct MacNativeMCPApp: App {
     @State private var appState = AppState()
     @State private var serverManager = MCPServerManager()
     @State private var authManager = AuthManager()
+    @State private var nexlayerService = NexlayerService()
 
     init() {
         NSApplication.shared.setActivationPolicy(.regular)
@@ -16,6 +17,7 @@ struct MacNativeMCPApp: App {
                 .environment(appState)
                 .environment(serverManager)
                 .environment(authManager)
+                .environment(nexlayerService)
                 .background(MainWindowSetupView())
                 .preferredColorScheme(.dark)
                 .task {
@@ -26,8 +28,12 @@ struct MacNativeMCPApp: App {
                 .onChange(of: authManager.state) { _, state in
                     if case .authenticated = state {
                         serverManager.apiKey = authManager.currentAPIKey
+                        if let client = authManager.nexlayerClient {
+                            nexlayerService.setClient(client)
+                        }
                     } else {
                         serverManager.apiKey = nil
+                        nexlayerService.reset()
                     }
                 }
         }
@@ -49,6 +55,7 @@ struct MacNativeMCPApp: App {
                 .environment(appState)
                 .environment(serverManager)
                 .environment(authManager)
+                .environment(nexlayerService)
         }
     }
 }
