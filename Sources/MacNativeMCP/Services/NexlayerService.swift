@@ -43,6 +43,7 @@ final class NexlayerService {
         var deployment:  String          // nexlayerApp slug or "" for global calls
         var timestamp:   Date   = Date()
         var durationMs:  Int
+        var tokenBurn:   Int    = 0      // NL tokens consumed (from _NL Token Burn: N tokens_ footer)
         var success:     Bool
         var error:       String?
     }
@@ -148,12 +149,12 @@ final class NexlayerService {
     // MARK: - CSV Export
 
     func exportCSV() -> String {
-        var lines = ["id,tool,deployment,timestamp,duration_ms,success,error"]
+        var lines = ["id,tool,deployment,timestamp,duration_ms,token_burn,success,error"]
         let fmt = ISO8601DateFormatter()
         for r in callHistory {
             let ts  = fmt.string(from: r.timestamp)
             let err = r.error?.replacingOccurrences(of: ",", with: ";") ?? ""
-            lines.append("\(r.id),\(r.tool),\(r.deployment),\(ts),\(r.durationMs),\(r.success),\(err)")
+            lines.append("\(r.id),\(r.tool),\(r.deployment),\(ts),\(r.durationMs),\(r.tokenBurn),\(r.success),\(err)")
         }
         return lines.joined(separator: "\n")
     }
@@ -382,6 +383,21 @@ final class NexlayerService {
         return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Extracts the NL token burn count from `_NL Token Burn: N tokens (api tier)_` footer.
+    private func extractTokenBurn(from text: String) -> Int {
+        for line in text.components(separatedBy: "\n") {
+            let t = line.trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+            if t.hasPrefix("NL Token Burn:") {
+                let rest = String(t.dropFirst("NL Token Burn:".count)).trimmingCharacters(in: .whitespaces)
+                // "1 tokens (api tier)" → grab first word
+                let numStr = rest.components(separatedBy: " ").first ?? ""
+                return Int(numStr) ?? 0
+            }
+        }
+        return 0
+    }
+
     /// Extracts a referral-specific URL (not just any nexlayer.com link).
     private func extractReferralURL(from text: String) -> String? {
         let words = text.components(separatedBy: .whitespacesAndNewlines)
@@ -416,7 +432,8 @@ final class NexlayerService {
                     return r
                 }
                 let ms = Int(Date().timeIntervalSince(start) * 1000)
-                callHistory.append(ToolCallRecord(tool: tool, deployment: deployment, durationMs: ms, success: true))
+                let tokens = extractTokenBurn(from: result)
+                callHistory.append(ToolCallRecord(tool: tool, deployment: deployment, durationMs: ms, tokenBurn: tokens, success: true))
                 return result
             } catch NexlayerServiceError.callTimeout {
                 attempt += 1

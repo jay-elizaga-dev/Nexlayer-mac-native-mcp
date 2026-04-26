@@ -84,7 +84,7 @@ struct CostReportsView: View {
                     summaryRow(summary)
                     Divider().background(AppColors.border.opacity(0.5))
                 }
-                // Global calls row
+                // Global / non-deployment calls row
                 let global = globalSummary
                 if global.callCount > 0 {
                     summaryRow(global)
@@ -97,11 +97,13 @@ struct CostReportsView: View {
 
     private var tableHeader: some View {
         HStack(spacing: 0) {
-            Text("Deployment").frame(maxWidth: .infinity, alignment: .leading)
-            Text("Calls").frame(width: 70, alignment: .trailing)
-            Text("Success %").frame(width: 90, alignment: .trailing)
-            Text("Avg (ms)").frame(width: 90, alignment: .trailing)
-            Text("Last call").frame(width: 150, alignment: .trailing)
+            Text("Deployment / Service").frame(maxWidth: .infinity, alignment: .leading)
+            Text("Calls").frame(width: 55, alignment: .trailing)
+            Text("Tokens").frame(width: 70, alignment: .trailing)
+            Text("Est. Cost").frame(width: 80, alignment: .trailing)
+            Text("Success").frame(width: 75, alignment: .trailing)
+            Text("Avg (ms)").frame(width: 80, alignment: .trailing)
+            Text("Last call").frame(width: 120, alignment: .trailing)
         }
         .font(AppFonts.label)
         .foregroundStyle(AppColors.textSecondary)
@@ -115,13 +117,17 @@ struct CostReportsView: View {
                 .font(AppFonts.code)
                 .foregroundStyle(AppColors.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text("\(s.callCount)").frame(width: 70, alignment: .trailing)
+            Text("\(s.callCount)").frame(width: 55, alignment: .trailing)
                 .foregroundStyle(AppColors.textPrimary)
-            Text(String(format: "%.0f%%", s.successRate * 100)).frame(width: 90, alignment: .trailing)
+            Text("\(s.totalTokens)").frame(width: 70, alignment: .trailing)
+                .foregroundStyle(s.totalTokens > 0 ? AppColors.textPrimary : AppColors.textSecondary)
+            Text(formatCost(s.totalTokens)).frame(width: 80, alignment: .trailing)
+                .foregroundStyle(s.totalTokens > 0 ? AppColors.warning : AppColors.textSecondary)
+            Text(String(format: "%.0f%%", s.successRate * 100)).frame(width: 75, alignment: .trailing)
                 .foregroundStyle(s.successRate > 0.9 ? AppColors.success : AppColors.danger)
-            Text("\(s.avgDurationMs)").frame(width: 90, alignment: .trailing)
+            Text("\(s.avgDurationMs)").frame(width: 80, alignment: .trailing)
                 .foregroundStyle(AppColors.textSecondary)
-            Text(relativeDate(s.lastCall)).frame(width: 150, alignment: .trailing)
+            Text(relativeDate(s.lastCall)).frame(width: 120, alignment: .trailing)
                 .foregroundStyle(AppColors.textSecondary)
         }
         .font(AppFonts.prose)
@@ -140,6 +146,7 @@ struct CostReportsView: View {
     struct DeploymentSummary {
         var deployment: String
         var callCount: Int
+        var totalTokens: Int
         var successRate: Double
         var avgDurationMs: Int
         var lastCall: Date
@@ -152,9 +159,11 @@ struct CostReportsView: View {
             let successful = records.filter(\.success).count
             let avg = records.isEmpty ? 0 : records.map(\.durationMs).reduce(0, +) / records.count
             let last = records.map(\.timestamp).max() ?? Date()
+            let tokens = records.map(\.tokenBurn).reduce(0, +)
             return DeploymentSummary(
                 deployment: dep,
                 callCount: records.count,
+                totalTokens: tokens,
                 successRate: records.isEmpty ? 0 : Double(successful) / Double(records.count),
                 avgDurationMs: avg,
                 lastCall: last
@@ -168,16 +177,26 @@ struct CostReportsView: View {
         let successful = records.filter(\.success).count
         let avg = records.isEmpty ? 0 : records.map(\.durationMs).reduce(0, +) / records.count
         let last = records.map(\.timestamp).max() ?? Date()
+        let tokens = records.map(\.tokenBurn).reduce(0, +)
         return DeploymentSummary(
             deployment: "",
             callCount: records.count,
+            totalTokens: tokens,
             successRate: records.isEmpty ? 0 : Double(successful) / Double(records.count),
             avgDurationMs: avg,
             lastCall: last
         )
     }
 
-    // MARK: - Export
+    // MARK: - Helpers
+
+    /// $10 = 1,000 credits = 1,000 NL tokens → 1 token = $0.01
+    private func formatCost(_ tokens: Int) -> String {
+        guard tokens > 0 else { return "—" }
+        let dollars = Double(tokens) * 0.01
+        if dollars < 0.01 { return "<$0.01" }
+        return String(format: "$%.2f", dollars)
+    }
 
     private func exportCSV() {
         let csv = nexlayer.exportCSV()
@@ -187,8 +206,6 @@ struct CostReportsView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         try? csv.write(to: url, atomically: true, encoding: .utf8)
     }
-
-    // MARK: - Helpers
 
     private func relativeDate(_ date: Date) -> String {
         let diff = Date().timeIntervalSince(date)
