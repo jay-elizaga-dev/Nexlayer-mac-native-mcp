@@ -21,6 +21,7 @@ struct MacNativeMCPApp: App {
                 .task {
                     AppTheme.applyDarkMode()
                     NSApp.activate(ignoringOtherApps: true)
+                    NSApp.windows.first?.makeKeyAndOrderFront(nil)
                 }
                 .onChange(of: authManager.state) { _, state in
                     if case .authenticated = state {
