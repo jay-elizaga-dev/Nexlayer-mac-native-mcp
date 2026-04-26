@@ -128,8 +128,13 @@ struct LandingView: View {
         }
         .onAppear {
             keyFieldFocused = true
-            if apiKey.isEmpty, let devKey = auth.devEnvKey {
-                apiKey = devKey
+            // Pre-fill from stored key or dev env (user still must press Connect)
+            if apiKey.isEmpty {
+                if let devKey = auth.devEnvKey {
+                    apiKey = devKey
+                } else if let stored = auth.storedKey {
+                    apiKey = stored
+                }
             }
         }
     }

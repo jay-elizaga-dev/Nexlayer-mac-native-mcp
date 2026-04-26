@@ -7,6 +7,9 @@ import SwiftUI
 struct SideDrawer: View {
     @Environment(AppState.self) var appState
     @Environment(NexlayerService.self) var nexlayer
+    @Environment(AuthManager.self) var auth
+
+    @State private var showUserMenu = false
 
     private var drawerWidth: CGFloat {
         appState.sidebarMode == .servers ? 240 : 200
@@ -36,6 +39,9 @@ struct SideDrawer: View {
             case .cost:
                 costNavContent
             }
+
+            Divider().background(AppColors.border)
+            expandedUserRow
         }
         .background(AppColors.surface)
     }
@@ -74,11 +80,10 @@ struct SideDrawer: View {
 
     private var costNavContent: some View {
         VStack(spacing: 0) {
-            navButton(icon: "server.rack",    label: "Servers",     mode: .servers)
+            navButton(icon: "server.rack",     label: "Servers",      mode: .servers)
             navButton(icon: "chart.bar.xaxis", label: "Cost & Usage", mode: .cost)
-
             Spacer()
-            costFooter
+            creditsRow
         }
     }
 
@@ -102,32 +107,59 @@ struct SideDrawer: View {
         .buttonStyle(.plain)
     }
 
-    private var costFooter: some View {
-        VStack(spacing: 4) {
-            Divider().background(AppColors.border)
-            HStack(spacing: 6) {
-                Image(systemName: "creditcard")
+    private var creditsRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "creditcard")
+                .font(.system(size: 10))
+                .foregroundStyle(AppColors.textSecondary)
+            if nexlayer.isCheckingCredits {
+                ProgressView().scaleEffect(0.5).frame(width: 12, height: 12)
+            } else if let credits = nexlayer.credits {
+                let line = firstLine(credits) ?? credits
+                Text(line.hasPrefix("Error") ? "—" : line)
+                    .font(AppFonts.label)
+                    .foregroundStyle(line.hasPrefix("Error") ? AppColors.danger : AppColors.textSecondary)
+                    .lineLimit(1)
+            } else {
+                Text("—").font(AppFonts.label).foregroundStyle(AppColors.textSecondary)
+            }
+            Spacer()
+            Button { Task { await nexlayer.fetchCredits() } } label: {
+                Image(systemName: "arrow.clockwise")
                     .font(.system(size: 10))
                     .foregroundStyle(AppColors.textSecondary)
-                if nexlayer.isCheckingCredits {
-                    ProgressView().scaleEffect(0.5).frame(width: 12, height: 12)
-                } else {
-                    Text(nexlayer.credits.flatMap { firstLine($0) } ?? "—")
+            }
+            .buttonStyle(.plain)
+            .disabled(nexlayer.isCheckingCredits)
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+    }
+
+    // MARK: - User avatar row (expanded)
+
+    private var expandedUserRow: some View {
+        Button { showUserMenu = true } label: {
+            HStack(spacing: 8) {
+                userAvatar(size: 26)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(auth.state == .authenticated ? "Signed in" : "Not signed in")
                         .font(AppFonts.label)
-                        .foregroundStyle(AppColors.textSecondary)
-                        .lineLimit(1)
+                        .foregroundStyle(AppColors.textPrimary)
+                    if let key = auth.currentAPIKey, key.count >= 4 {
+                        Text("•••• \(String(key.suffix(4)))")
+                            .font(.system(size: 9))
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
                 }
                 Spacer()
-                Button { Task { await nexlayer.fetchCredits() } } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 10))
-                        .foregroundStyle(AppColors.textSecondary)
-                }
-                .buttonStyle(.plain)
-                .disabled(nexlayer.isCheckingCredits)
             }
             .padding(.horizontal, 12)
-            .padding(.bottom, 8)
+            .padding(.vertical, 8)
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showUserMenu, arrowEdge: .bottom) {
+            userMenuPopover
         }
     }
 
@@ -153,6 +185,18 @@ struct SideDrawer: View {
             railIcon(icon: "chart.bar.xaxis", mode: .cost)
 
             Spacer()
+
+            Divider().background(AppColors.border)
+
+            // User avatar in rail
+            Button { showUserMenu = true } label: {
+                userAvatar(size: 24)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showUserMenu, arrowEdge: .trailing) {
+                userMenuPopover
+            }
         }
         .background(AppColors.surface)
     }
@@ -164,6 +208,80 @@ struct SideDrawer: View {
                 .frame(width: 44, height: 36)
                 .foregroundStyle(appState.sidebarMode == mode ? AppColors.accent : AppColors.textSecondary)
                 .background(appState.sidebarMode == mode ? AppColors.accent.opacity(0.15) : Color.clear)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - User avatar
+
+    @ViewBuilder
+    private func userAvatar(size: CGFloat) -> some View {
+        let isAuth = auth.state == .authenticated
+        ZStack {
+            Circle()
+                .fill(isAuth ? AppColors.accent.opacity(0.2) : AppColors.surface)
+                .overlay(Circle().stroke(isAuth ? AppColors.accent : AppColors.border, lineWidth: 1))
+                .frame(width: size, height: size)
+            Image(systemName: isAuth ? "person.fill" : "person")
+                .font(.system(size: size * 0.45))
+                .foregroundStyle(isAuth ? AppColors.accent : AppColors.textSecondary)
+        }
+    }
+
+    // MARK: - User menu popover
+
+    private var userMenuPopover: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            HStack(spacing: 8) {
+                userAvatar(size: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(auth.state == .authenticated ? "Signed in" : "Not signed in")
+                        .font(AppFonts.label)
+                        .foregroundStyle(AppColors.textPrimary)
+                    if let key = auth.currentAPIKey, key.count >= 4 {
+                        Text("API key ending in \(String(key.suffix(4)))")
+                            .font(.system(size: 10))
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+
+            Divider().background(AppColors.border)
+
+            if auth.state == .authenticated {
+                menuItem(label: "Sign Out", icon: "rectangle.portrait.and.arrow.right", danger: true) {
+                    showUserMenu = false
+                    auth.signOut()
+                }
+            } else {
+                menuItem(label: "Sign In", icon: "arrow.right.circle", danger: false) {
+                    showUserMenu = false
+                    auth.retry()
+                }
+            }
+        }
+        .frame(width: 220)
+        .background(AppColors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppColors.border, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func menuItem(label: String, icon: String, danger: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .frame(width: 16)
+                Text(label)
+                    .font(AppFonts.prose)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .foregroundStyle(danger ? AppColors.danger : AppColors.textPrimary)
         }
         .buttonStyle(.plain)
     }

@@ -14,9 +14,11 @@ final class AuthManager {
         case error(String)
     }
 
-    var state: State = .checking
+    var state: State = .unauthenticated
     var currentAPIKey: String?
     var devEnvKey: String?
+    /// Pre-filled key from keychain — offered as default but not auto-connected.
+    private(set) var storedKey: String?
     private(set) var nexlayerClient: MCPClient?
 
     private let nexlayerURL = URL(string: "https://mcp.nexlayer.ai/api/mcp")!
@@ -27,18 +29,8 @@ final class AuthManager {
         #if DEBUG
         devEnvKey = loadFromDevEnv()
         #endif
-        Task { await checkStoredKey() }
-    }
-
-    // MARK: - Stored key restore
-
-    private func checkStoredKey() async {
-        guard let key = loadFromKeychain() else {
-            state = .unauthenticated
-            return
-        }
-        state = .connecting
-        await connect(apiKey: key, saveOnSuccess: false)
+        // Load stored key for pre-fill only — never auto-connect on startup.
+        storedKey = loadFromKeychain()
     }
 
     // MARK: - dev.env loader (DEBUG only)
