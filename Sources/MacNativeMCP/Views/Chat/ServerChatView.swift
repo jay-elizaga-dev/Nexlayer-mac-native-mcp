@@ -3,6 +3,7 @@ import SwiftUI
 struct ServerChatView: View {
     @Environment(AppState.self) private var appState
     @Environment(NexlayerService.self) private var nexlayer
+    @Environment(AuthManager.self) private var auth
 
     let chatId: UUID
     let server: AppState.ServerConfig
@@ -10,6 +11,9 @@ struct ServerChatView: View {
     @State private var inputText: String = ""
     @State private var editorHeight: CGFloat = 40
     @State private var isSending: Bool = false
+    @State private var selectedModel: String = OpenRouterClient.defaultModel
+
+    private let openRouter = OpenRouterClient()
 
     private var session: AppState.ChatSession? {
         appState.chatSessions.first(where: { $0.id == chatId })
@@ -176,8 +180,48 @@ struct ServerChatView: View {
         editorHeight = 40
         isSending = true
 
-        // TODO: Route to NexlayerService tool call based on content
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        guard let key = auth.openRouterKey, !key.isEmpty else {
+            appState.appendMessage(
+                AppState.ConversationMessage(
+                    role: "assistant",
+                    content: "⚠ OpenRouter key not set — add it in Settings to enable conversation. (Tool calls via Nexlayer still work.)"
+                ),
+                toChatId: chatId
+            )
+            isSending = false
+            return
+        }
+
+        // Build message history for the request
+        let history = session?.messages.map {
+            OpenRouterClient.Message(role: $0.role, content: $0.content)
+        } ?? []
+
+        let systemPrompt = """
+        You are a helpful assistant with access to the Nexlayer MCP server "\(server.name)".
+        The user may ask you to run Nexlayer tools (deployments, logs, status checks, etc.).
+        When you need to use a tool, describe what you would call and the user can trigger it directly.
+        Keep responses concise and actionable.
+        """
+
+        Task {
+            do {
+                let (text, _) = try await openRouter.chat(
+                    messages: history,
+                    model: selectedModel,
+                    apiKey: key,
+                    systemPrompt: systemPrompt
+                )
+                appState.appendMessage(
+                    AppState.ConversationMessage(role: "assistant", content: text),
+                    toChatId: chatId
+                )
+            } catch {
+                appState.appendMessage(
+                    AppState.ConversationMessage(role: "assistant", content: "⚠ \(error.localizedDescription)"),
+                    toChatId: chatId
+                )
+            }
             isSending = false
         }
     }

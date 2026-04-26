@@ -3,7 +3,7 @@ import SwiftUI
 struct LandingView: View {
     @Environment(AuthManager.self) private var auth
     @State private var nexlayerKey: String = ""
-    @State private var claudeKey: String = ""
+    @State private var openRouterKey: String = ""
     @FocusState private var focusedField: Field?
 
     private enum Field { case nexlayer, claude }
@@ -96,15 +96,15 @@ struct LandingView: View {
                             linkLabel: "Get one →"
                         )
 
-                        // Claude key (optional)
+                        // OpenRouter key (optional)
                         keyField(
-                            label: "ANTHROPIC (CLAUDE) API KEY",
-                            hint: "optional — enables conversation",
+                            label: "OPENROUTER API KEY",
+                            hint: "optional — enables AI conversation (Claude, GPT, Llama…)",
                             hintColor: AppColors.textSecondary.opacity(0.7),
-                            placeholder: "sk-ant-… (leave blank to use tools only)",
-                            text: $claudeKey,
+                            placeholder: "sk-or-v1-… (leave blank to use tools only)",
+                            text: $openRouterKey,
                             field: .claude,
-                            linkURL: URL(string: "https://console.anthropic.com/settings/keys")!,
+                            linkURL: URL(string: "https://openrouter.ai/keys")!,
                             linkLabel: "Get one →"
                         )
 
@@ -144,8 +144,8 @@ struct LandingView: View {
             if nexlayerKey.isEmpty {
                 nexlayerKey = auth.devEnvKey ?? auth.storedKey ?? ""
             }
-            if claudeKey.isEmpty, let stored = auth.storedClaudeKey {
-                claudeKey = stored
+            if openRouterKey.isEmpty, let stored = auth.storedOpenRouterKey {
+                openRouterKey = stored
             }
         }
     }
@@ -204,8 +204,8 @@ struct LandingView: View {
 
     private func submit() {
         guard !nexlayerKey.isEmpty else { return }
-        if !claudeKey.isEmpty {
-            auth.setClaudeAPIKey(claudeKey)
+        if !openRouterKey.isEmpty {
+            auth.setOpenRouterKey(openRouterKey)
         }
         Task { await auth.authenticate(apiKey: nexlayerKey) }
     }

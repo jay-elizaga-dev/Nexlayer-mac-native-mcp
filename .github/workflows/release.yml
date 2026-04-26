@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'          # triggers on v0.2.0, v1.0.0, etc.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. v0.2.0)'
+        required: true
+        default: 'v0.2.0'
+
+env:
+  APP_NAME: MacNativeMCP
+  BUNDLE_ID: dev.elizaga.mac-native-mcp
+
+jobs:
+  build-and-release:
+    runs-on: macos-14        # Apple Silicon runner (M1)
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
+          # Strip leading 'v' for CFBundleShortVersionString
+          echo "short=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Update version in Info.plist
+        run: |
+          SHORT="${{ steps.version.outputs.short }}"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT" \
+            MacNativeMCP.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $SHORT" \
+            MacNativeMCP.app/Contents/Info.plist
+
+      - name: Build release (arm64)
+        run: swift build -c release --arch arm64
+
+      - name: Build release (x86_64)
+        run: swift build -c release --arch x86_64
+
+      - name: Create universal binary
+        run: |
+          lipo -create \
+            .build/arm64-apple-macosx/release/$APP_NAME \
+            .build/x86_64-apple-macosx/release/$APP_NAME \
+            -output .build/release-universal/$APP_NAME
+          mkdir -p .build/release-universal
+
+          lipo -create \
+            .build/arm64-apple-macosx/release/$APP_NAME \
+            .build/x86_64-apple-macosx/release/$APP_NAME \
+            -output .build/release-universal/$APP_NAME
+
+      - name: Assemble .app bundle
+        run: |
+          mkdir -p Staging/$APP_NAME.app/Contents/MacOS
+          cp -R MacNativeMCP.app/Contents/Info.plist Staging/$APP_NAME.app/Contents/
+          cp -R MacNativeMCP.app/Contents/Resources  Staging/$APP_NAME.app/Contents/ 2>/dev/null || true
+          cp .build/release-universal/$APP_NAME      Staging/$APP_NAME.app/Contents/MacOS/$APP_NAME
+          chmod +x Staging/$APP_NAME.app/Contents/MacOS/$APP_NAME
+
+      - name: Ad-hoc code sign (for Gatekeeper bypass instructions)
+        run: |
+          codesign --force --deep --sign - Staging/$APP_NAME.app
+
+      - name: Create .dmg
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+          DMG_NAME="${APP_NAME}-${VERSION}.dmg"
+          hdiutil create \
+            -volname "$APP_NAME" \
+            -srcfolder Staging/$APP_NAME.app \
+            -ov \
+            -format UDZO \
+            "$DMG_NAME"
+          echo "DMG_PATH=$DMG_NAME" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Mac Native MCP ${{ steps.version.outputs.tag }}
+          body: |
+            ## Mac Native MCP ${{ steps.version.outputs.tag }}
+
+            Native macOS MCP client — pure SwiftUI, no Electron.
+
+            ### Install
+            1. Download `${{ env.APP_NAME }}-${{ steps.version.outputs.tag }}.dmg`
+            2. Open the `.dmg` and drag **MacNativeMCP.app** to Applications
+            3. First launch: right-click → **Open** to bypass Gatekeeper
+
+            ### What's new
+            See [commits since last release](https://github.com/${{ github.repository }}/compare/${{ steps.version.outputs.tag }}...HEAD).
+
+            ---
+            Built on macOS 14 (Apple Silicon + Intel universal binary)
+          files: ${{ env.DMG_PATH }}
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

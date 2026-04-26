@@ -22,11 +22,11 @@ final class AuthManager {
     private(set) var storedKey: String?
     private(set) var nexlayerClient: MCPClient?
 
-    /// Claude (Anthropic) API key — used by the conversation panel.
+    /// OpenRouter API key — routes to Claude, GPT, Mistral, Llama, etc.
     /// Optional: user can skip and use Nexlayer tools only.
-    var claudeAPIKey: String?
-    private(set) var storedClaudeKey: String?
-    var hasClaudeKey: Bool { claudeAPIKey?.isEmpty == false }
+    var openRouterKey: String?
+    private(set) var storedOpenRouterKey: String?
+    var hasOpenRouterKey: Bool { !(openRouterKey ?? "").isEmpty }
 
     /// Web session token — set after account linking via WebView or OAuth.
     /// Only available in internal (local/dev) builds.
@@ -43,7 +43,7 @@ final class AuthManager {
     private var nexlayerURL: URL { AppEnvironment.current.nexlayerMCPEndpoint }
     private let keychainService = "dev.elizaga.mac-native-mcp"
     private let keychainAccount = "nexlayer-api-key"
-    private let keychainClaudeAccount = "anthropic-api-key"
+    private let keychainOpenRouterAccount = "openrouter-api-key"
     private let keychainSessionAccount = "nexlayer-session-token"
 
     init() {
@@ -52,7 +52,7 @@ final class AuthManager {
         #endif
         // Load stored keys for pre-fill only — never auto-connect on startup.
         storedKey = loadFromKeychain(account: keychainAccount)
-        storedClaudeKey = loadFromKeychain(account: keychainClaudeAccount)
+        storedOpenRouterKey = loadFromKeychain(account: keychainOpenRouterAccount)
         // Restore session token if previously linked (internal only).
         if AppEnvironment.current.isInternal {
             webSessionToken = loadSessionTokenFromKeychain()
@@ -94,24 +94,24 @@ final class AuthManager {
         await connect(apiKey: trimmed, saveOnSuccess: true)
     }
 
-    /// Sets and persists the Claude (Anthropic) API key without re-connecting Nexlayer.
-    func setClaudeAPIKey(_ key: String) {
+    /// Sets and persists the OpenRouter API key without re-connecting Nexlayer.
+    func setOpenRouterKey(_ key: String) {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            claudeAPIKey = nil
-            deleteFromKeychain(account: keychainClaudeAccount)
+            openRouterKey = nil
+            deleteFromKeychain(account: keychainOpenRouterAccount)
         } else {
-            claudeAPIKey = trimmed
-            saveToKeychain(trimmed, account: keychainClaudeAccount)
+            openRouterKey = trimmed
+            saveToKeychain(trimmed, account: keychainOpenRouterAccount)
         }
     }
 
     func signOut() {
         deleteFromKeychain(account: keychainAccount)
-        deleteFromKeychain(account: keychainClaudeAccount)
+        deleteFromKeychain(account: keychainOpenRouterAccount)
         deleteSessionTokenFromKeychain()
         currentAPIKey = nil
-        claudeAPIKey = nil
+        openRouterKey = nil
         webSessionToken = nil
         linkMethod = .none
         oauthManager.signOut()
