@@ -54,6 +54,7 @@ final class NexlayerService {
         var total:       Int             // plan total (may be 0 for free)
         var bonus:       Int             // bonus credits
         var accessLevel: String          // "limited", "full"
+        var upgradeURL:  String?         // from "Manage your plan: URL"
         var rawResponse: String          // full text for display
         var fetchedAt:   Date = Date()
     }
@@ -79,10 +80,14 @@ final class NexlayerService {
         isFetchingCredits = true
         defer { isFetchingCredits = false }
         do {
-            let text = try await call("nexlayer_check_credits", args: [:], deployment: "")
+            // Works with API key auth — no session required
+            var args: [String: Any] = [:]
+            if let token = sessionToken, !token.isEmpty {
+                args = sessionArgs(token: token)
+            }
+            let text = try await call("nexlayer_check_credits", args: args, deployment: "")
             creditBalance = parseCreditBalance(from: text)
         } catch {
-            // Store error in rawResponse so BillingView can display it
             creditBalance = CreditBalance(
                 plan: "Unknown",
                 remaining: 0, used: 0, total: 0, bonus: 0,
@@ -92,27 +97,42 @@ final class NexlayerService {
         }
     }
 
-    // MARK: - Referral
+    // MARK: - Referral (requires session — call only after web sign-in)
 
     func fetchReferral() async {
+        guard let token = sessionToken, !token.isEmpty else {
+            // Signal to BillingView that session is needed
+            referralLink = "__needs_session__"
+            return
+        }
         isFetchingReferral = true
         defer { isFetchingReferral = false }
         do {
-            let text = try await call("nexlayer_get_referral", args: [:], deployment: "")
-            referralLink = extractURL(from: text) ?? text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = try await call("nexlayer_get_referral", args: sessionArgs(token: token), deployment: "")
+            let cleaned = stripMetadata(from: text)
+            // Extract a referral URL if present; otherwise show the cleaned message
+            referralLink = extractReferralURL(from: cleaned) ?? cleaned
         } catch {
             referralLink = "Error: \(error.localizedDescription)"
         }
     }
 
-    // MARK: - Coupon
+    // MARK: - Coupon (requires session — call only after web sign-in)
 
     func applyCoupon(code: String) async {
+        guard let token = sessionToken, !token.isEmpty else {
+            couponResult = "__needs_session__"
+            return
+        }
         isApplyingCoupon = true
         defer { isApplyingCoupon = false }
         do {
-            let text = try await call("nexlayer_apply_coupon", args: ["coupon": code], deployment: "")
-            couponResult = text
+            let text = try await call(
+                "nexlayer_apply_coupon",
+                args: sessionArgs(token: token).merging(["code": code]) { $1 },
+                deployment: ""
+            )
+            couponResult = stripMetadata(from: text)
             await fetchCredits()
         } catch {
             couponResult = "Error: \(error.localizedDescription)"
@@ -272,11 +292,17 @@ final class NexlayerService {
     // MARK: - Parsers
 
     /// Parses the nexlayer_check_credits response.
-    /// Handles both pipe-separated and newline-separated formats:
-    ///   "Plan: Free | Credits remaining: 0 (used 5021 of 0, +5000 bonus) | Access level: limited"
-    ///   "Plan: Free\nCredits remaining: 0 (used 5021 of 0, +5000 bonus)\nAccess level: limited"
+    /// Actual format (newline-separated):
+    ///   Plan: Free
+    ///   Credits remaining: 0 (used 5022 of 0, +5000 bonus)
+    ///   Access level: limited
+    ///
+    ///   Manage your plan: https://app.nexlayer.com/settings/plans
+    ///
+    ///   ---
+    ///   _NL Token Burn: 1 tokens (api tier)_
     static func parseCreditBalance(from text: String) -> CreditBalance {
-        // Normalize separators
+        // Normalize pipe-separated format too
         let normalized = text.replacingOccurrences(of: " | ", with: "\n")
         var plan = "Unknown"
         var remaining = 0
@@ -284,33 +310,32 @@ final class NexlayerService {
         var total = 0
         var bonus = 0
         var accessLevel = "unknown"
+        var upgradeURL: String?
 
+        // Stop parsing at the "---" metadata separator
         for line in normalized.components(separatedBy: "\n") {
             let t = line.trimmingCharacters(in: .whitespaces)
+            if t == "---" { break }
+
             if t.hasPrefix("Plan:") {
                 plan = String(t.dropFirst("Plan:".count)).trimmingCharacters(in: .whitespaces)
             } else if t.hasPrefix("Credits remaining:") {
-                // "Credits remaining: 0 (used 5021 of 0, +5000 bonus)"
                 let rest = String(t.dropFirst("Credits remaining:".count)).trimmingCharacters(in: .whitespaces)
                 if let spaceIdx = rest.firstIndex(of: " ") {
                     remaining = Int(rest[rest.startIndex..<spaceIdx]) ?? 0
                 } else {
                     remaining = Int(rest) ?? 0
                 }
-                // Parse used / total / bonus from parenthetical
                 if let openParen = rest.firstIndex(of: "("),
                    let closeParen = rest.lastIndex(of: ")") {
                     let inner = String(rest[rest.index(after: openParen)..<closeParen])
-                    // "used 5021 of 0, +5000 bonus"
-                    let parts = inner.components(separatedBy: ",")
-                    for part in parts {
+                    for part in inner.components(separatedBy: ",") {
                         let p = part.trimmingCharacters(in: .whitespaces)
                         if p.hasPrefix("used ") {
                             let nums = p.dropFirst("used ".count).components(separatedBy: " of ")
                             used  = Int(nums[0].trimmingCharacters(in: .whitespaces)) ?? 0
                             total = nums.count > 1 ? (Int(nums[1].trimmingCharacters(in: .whitespaces)) ?? 0) : 0
                         } else if p.hasPrefix("+") {
-                            // "+5000 bonus"
                             let numStr = p.dropFirst().components(separatedBy: " ").first ?? ""
                             bonus = Int(numStr) ?? 0
                         }
@@ -318,6 +343,9 @@ final class NexlayerService {
                 }
             } else if t.hasPrefix("Access level:") {
                 accessLevel = String(t.dropFirst("Access level:".count)).trimmingCharacters(in: .whitespaces)
+            } else if t.hasPrefix("Manage your plan:") {
+                let url = String(t.dropFirst("Manage your plan:".count)).trimmingCharacters(in: .whitespaces)
+                upgradeURL = url.isEmpty ? nil : url
             }
         }
 
@@ -328,6 +356,7 @@ final class NexlayerService {
             total: total,
             bonus: bonus,
             accessLevel: accessLevel,
+            upgradeURL: upgradeURL,
             rawResponse: text
         )
     }
@@ -336,10 +365,30 @@ final class NexlayerService {
         Self.parseCreditBalance(from: text)
     }
 
-    private func extractURL(from text: String) -> String? {
-        // Simple URL extraction — find first http(s):// token
+    // MARK: - Private helpers
+
+    /// Builds session args for tools that need OAuth session params.
+    private func sessionArgs(token: String) -> [String: Any] {
+        ["sessionToken": token, "sessionId": "", "userIP": ""]
+    }
+
+    /// Strips the `---\n_NL Token Burn:...` metadata footer from MCP responses.
+    private func stripMetadata(from text: String) -> String {
+        var lines = [String]()
+        for line in text.components(separatedBy: "\n") {
+            if line.trimmingCharacters(in: .whitespaces) == "---" { break }
+            lines.append(line)
+        }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Extracts a referral-specific URL (not just any nexlayer.com link).
+    private func extractReferralURL(from text: String) -> String? {
         let words = text.components(separatedBy: .whitespacesAndNewlines)
-        return words.first(where: { $0.hasPrefix("http://") || $0.hasPrefix("https://") })
+        return words.first(where: {
+            ($0.hasPrefix("http://") || $0.hasPrefix("https://")) &&
+            (($0.contains("invite") || $0.contains("referral") || $0.contains("ref=")))
+        })
     }
 
     // MARK: - Private call
