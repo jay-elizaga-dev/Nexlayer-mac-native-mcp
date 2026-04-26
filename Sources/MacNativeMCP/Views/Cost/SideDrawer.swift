@@ -112,25 +112,34 @@ struct SideDrawer: View {
             Image(systemName: "creditcard")
                 .font(.system(size: 10))
                 .foregroundStyle(AppColors.textSecondary)
-            if nexlayer.isCheckingCredits {
+            if nexlayer.isCheckingCredits || nexlayer.isEstablishingSession {
                 ProgressView().scaleEffect(0.5).frame(width: 12, height: 12)
+                Text(nexlayer.isEstablishingSession ? "Signing in…" : "Checking…")
+                    .font(AppFonts.label)
+                    .foregroundStyle(AppColors.textSecondary)
             } else if let credits = nexlayer.credits {
                 let line = firstLine(credits) ?? credits
-                Text(line.hasPrefix("Error") ? "—" : line)
+                let isErr = line.lowercased().contains("error") || line.lowercased().contains("sign in")
+                Text(isErr ? "Sign in required" : line)
                     .font(AppFonts.label)
-                    .foregroundStyle(line.hasPrefix("Error") ? AppColors.danger : AppColors.textSecondary)
+                    .foregroundStyle(isErr ? AppColors.danger : AppColors.textSecondary)
                     .lineLimit(1)
             } else {
                 Text("—").font(AppFonts.label).foregroundStyle(AppColors.textSecondary)
             }
             Spacer()
-            Button { Task { await nexlayer.fetchCredits() } } label: {
+            Button {
+                Task {
+                    if nexlayer.jwtToken == nil { await nexlayer.establishSession() }
+                    await nexlayer.fetchCredits()
+                }
+            } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 10))
                     .foregroundStyle(AppColors.textSecondary)
             }
             .buttonStyle(.plain)
-            .disabled(nexlayer.isCheckingCredits)
+            .disabled(nexlayer.isCheckingCredits || nexlayer.isEstablishingSession)
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
