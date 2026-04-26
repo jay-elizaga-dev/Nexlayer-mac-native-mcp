@@ -13,6 +13,7 @@ enum AppColors {
     static let toolResult    = Color(hex: "#0F1A12")
     static let danger        = Color(hex: "#E05252")
     static let success       = Color(hex: "#52C97A")
+    static let warning       = Color(hex: "#E0943A")
     static let titleBarBg    = Color(hex: "#090909")
     static let titleBarBorder = Color(hex: "#222222")
     static let panelHeaderBg = Color(hex: "#111111")

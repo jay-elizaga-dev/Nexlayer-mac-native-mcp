@@ -46,9 +46,6 @@ struct MacNativeMCPApp: App {
                 }
                 .onChange(of: authManager.webSessionToken) { _, token in
                     nexlayerService.sessionToken = token
-                    if token != nil {
-                        Task { await nexlayerService.fetchCredits() }
-                    }
                 }
         }
         .windowStyle(.hiddenTitleBar)

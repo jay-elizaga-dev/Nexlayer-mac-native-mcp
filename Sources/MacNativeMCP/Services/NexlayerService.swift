@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Observation
 
 @Observable
@@ -17,15 +18,17 @@ final class NexlayerService {
 
     // Cost tracking
     var callHistory:       [ToolCallRecord]            = []
-    var credits:           String?                     = nil
-    var isCheckingCredits: Bool                        = false
+
+    // Billing
+    var creditBalance:     CreditBalance?              = nil
+    var isFetchingCredits: Bool                        = false
+    var referralLink:      String?                     = nil
+    var isFetchingReferral: Bool                       = false
+    var couponResult:      String?                     = nil
+    var isApplyingCoupon:  Bool                        = false
 
     /// NextAuth.js session token — set after web sign-in. Enables OAuth-required tools.
     var sessionToken: String?
-
-    // NOTE: nexlayer_check_credits requires sessionToken (NextAuth.js cookie).
-    // With no web session, credits are not accessible from the native app.
-    static let creditsUnavailableMessage = "Credits require account link — tap Link Account in the user menu"
 
     // MARK: - Models
 
@@ -44,6 +47,17 @@ final class NexlayerService {
         var error:       String?
     }
 
+    struct CreditBalance {
+        var plan:        String          // "Free", "Pro", etc.
+        var remaining:   Int             // credits remaining
+        var used:        Int             // credits used
+        var total:       Int             // plan total (may be 0 for free)
+        var bonus:       Int             // bonus credits
+        var accessLevel: String          // "limited", "full"
+        var rawResponse: String          // full text for display
+        var fetchedAt:   Date = Date()
+    }
+
     // MARK: - Setup
 
     func setClient(_ client: MCPClient) {
@@ -55,28 +69,60 @@ final class NexlayerService {
         statusCache.removeAll()
         logsCache.removeAll()
         errors.removeAll()
-        credits = nil
+        creditBalance = nil
         sessionToken = nil
     }
 
-    // MARK: - Credits
+    // MARK: - Credits (works with API key auth — no OAuth required)
 
-    /// Attempts to fetch credits using the web session token if available.
-    /// Falls back to the unavailable message if no session is linked.
     func fetchCredits() async {
-        guard let token = sessionToken, !token.isEmpty else {
-            credits = NexlayerService.creditsUnavailableMessage
-            return
-        }
-        isCheckingCredits = true
-        defer { isCheckingCredits = false }
+        isFetchingCredits = true
+        defer { isFetchingCredits = false }
         do {
-            let args: [String: Any] = ["sessionToken": token]
-            let text = try await call("nexlayer_check_credits", args: args, deployment: "")
-            credits = text
+            let text = try await call("nexlayer_check_credits", args: [:], deployment: "")
+            creditBalance = parseCreditBalance(from: text)
         } catch {
-            credits = "Could not fetch credits: \(error.localizedDescription)"
+            // Store error in rawResponse so BillingView can display it
+            creditBalance = CreditBalance(
+                plan: "Unknown",
+                remaining: 0, used: 0, total: 0, bonus: 0,
+                accessLevel: "unknown",
+                rawResponse: "Error: \(error.localizedDescription)"
+            )
         }
+    }
+
+    // MARK: - Referral
+
+    func fetchReferral() async {
+        isFetchingReferral = true
+        defer { isFetchingReferral = false }
+        do {
+            let text = try await call("nexlayer_get_referral", args: [:], deployment: "")
+            referralLink = extractURL(from: text) ?? text.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            referralLink = "Error: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Coupon
+
+    func applyCoupon(code: String) async {
+        isApplyingCoupon = true
+        defer { isApplyingCoupon = false }
+        do {
+            let text = try await call("nexlayer_apply_coupon", args: ["coupon": code], deployment: "")
+            couponResult = text
+            await fetchCredits()
+        } catch {
+            couponResult = "Error: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Billing portal
+
+    func openBillingPortal() {
+        NSWorkspace.shared.open(URL(string: "https://app.nexlayer.com/settings/plans")!)
     }
 
     // MARK: - CSV Export
@@ -138,7 +184,6 @@ final class NexlayerService {
             "deployment": server.nexlayerApp
         ]
         _ = try await call("nexlayer_debug_pod_restart_deployment", args: args, deployment: server.nexlayerApp)
-        // Refresh status after restart
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await fetchStatus(for: server)
     }
@@ -201,8 +246,6 @@ final class NexlayerService {
         let tokens = name.split(separator: "-").map(String.init)
         guard tokens.count > 1 else { return name }
 
-        // Strategy 1: find a prefix that repeats at a later position
-        // Try longest prefixes first so "etf-bot-dev-test-etf-bot" picks "etf-bot-dev-test" not "etf"
         for prefixLen in stride(from: tokens.count / 2, through: 1, by: -1) {
             let prefix = Array(tokens[..<prefixLen])
             for startPos in prefixLen...(tokens.count - prefixLen) {
@@ -212,7 +255,6 @@ final class NexlayerService {
             }
         }
 
-        // Strategy 2: strip known infra component suffix
         if let last = tokens.last, infraComponents.contains(last) {
             let slug = Array(tokens.dropLast()).joined(separator: "-")
             return slug.isEmpty ? nil : slug
@@ -227,7 +269,80 @@ final class NexlayerService {
             .joined(separator: " ")
     }
 
-    // MARK: - Private
+    // MARK: - Parsers
+
+    /// Parses the nexlayer_check_credits response.
+    /// Handles both pipe-separated and newline-separated formats:
+    ///   "Plan: Free | Credits remaining: 0 (used 5021 of 0, +5000 bonus) | Access level: limited"
+    ///   "Plan: Free\nCredits remaining: 0 (used 5021 of 0, +5000 bonus)\nAccess level: limited"
+    static func parseCreditBalance(from text: String) -> CreditBalance {
+        // Normalize separators
+        let normalized = text.replacingOccurrences(of: " | ", with: "\n")
+        var plan = "Unknown"
+        var remaining = 0
+        var used = 0
+        var total = 0
+        var bonus = 0
+        var accessLevel = "unknown"
+
+        for line in normalized.components(separatedBy: "\n") {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t.hasPrefix("Plan:") {
+                plan = String(t.dropFirst("Plan:".count)).trimmingCharacters(in: .whitespaces)
+            } else if t.hasPrefix("Credits remaining:") {
+                // "Credits remaining: 0 (used 5021 of 0, +5000 bonus)"
+                let rest = String(t.dropFirst("Credits remaining:".count)).trimmingCharacters(in: .whitespaces)
+                if let spaceIdx = rest.firstIndex(of: " ") {
+                    remaining = Int(rest[rest.startIndex..<spaceIdx]) ?? 0
+                } else {
+                    remaining = Int(rest) ?? 0
+                }
+                // Parse used / total / bonus from parenthetical
+                if let openParen = rest.firstIndex(of: "("),
+                   let closeParen = rest.lastIndex(of: ")") {
+                    let inner = String(rest[rest.index(after: openParen)..<closeParen])
+                    // "used 5021 of 0, +5000 bonus"
+                    let parts = inner.components(separatedBy: ",")
+                    for part in parts {
+                        let p = part.trimmingCharacters(in: .whitespaces)
+                        if p.hasPrefix("used ") {
+                            let nums = p.dropFirst("used ".count).components(separatedBy: " of ")
+                            used  = Int(nums[0].trimmingCharacters(in: .whitespaces)) ?? 0
+                            total = nums.count > 1 ? (Int(nums[1].trimmingCharacters(in: .whitespaces)) ?? 0) : 0
+                        } else if p.hasPrefix("+") {
+                            // "+5000 bonus"
+                            let numStr = p.dropFirst().components(separatedBy: " ").first ?? ""
+                            bonus = Int(numStr) ?? 0
+                        }
+                    }
+                }
+            } else if t.hasPrefix("Access level:") {
+                accessLevel = String(t.dropFirst("Access level:".count)).trimmingCharacters(in: .whitespaces)
+            }
+        }
+
+        return CreditBalance(
+            plan: plan,
+            remaining: remaining,
+            used: used,
+            total: total,
+            bonus: bonus,
+            accessLevel: accessLevel,
+            rawResponse: text
+        )
+    }
+
+    func parseCreditBalance(from text: String) -> CreditBalance {
+        Self.parseCreditBalance(from: text)
+    }
+
+    private func extractURL(from text: String) -> String? {
+        // Simple URL extraction — find first http(s):// token
+        let words = text.components(separatedBy: .whitespacesAndNewlines)
+        return words.first(where: { $0.hasPrefix("http://") || $0.hasPrefix("https://") })
+    }
+
+    // MARK: - Private call
 
     private func call(_ tool: String, args: [String: Any], deployment: String = "") async throws -> String {
         guard let client else { throw NexlayerServiceError.notConnected }
@@ -262,9 +377,8 @@ final class NexlayerService {
                     throw NexlayerServiceError.callTimeout
                 }
                 try await Task.sleep(nanoseconds: retryDelay)
-                retryDelay *= 2  // 1s, 2s
+                retryDelay *= 2
             }
-            // Non-timeout errors surface immediately.
         }
     }
 }

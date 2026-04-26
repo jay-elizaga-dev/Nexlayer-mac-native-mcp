@@ -4,12 +4,27 @@ import AppKit
 struct CostReportsView: View {
     @Environment(AppState.self) var appState
     @Environment(NexlayerService.self) var nexlayer
-    @Environment(AuthManager.self) var auth
+
+    @State private var billingExpanded = true
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider().background(AppColors.border)
+
+            // Billing panel — collapsible
+            DisclosureGroup("Account Balance", isExpanded: $billingExpanded) {
+                BillingView()
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+            .font(AppFonts.label)
+            .foregroundStyle(AppColors.textSecondary)
+
+            Divider().background(AppColors.border)
+
             if nexlayer.callHistory.isEmpty {
                 emptyState
             } else {
@@ -23,12 +38,9 @@ struct CostReportsView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Cost & Usage")
-                    .font(AppFonts.heading)
-                    .foregroundStyle(AppColors.textPrimary)
-                creditsLine
-            }
+            Text("Cost & Usage")
+                .font(AppFonts.heading)
+                .foregroundStyle(AppColors.textPrimary)
             Spacer()
             Button(action: exportCSV) {
                 Label("Export CSV", systemImage: "square.and.arrow.up")
@@ -39,51 +51,6 @@ struct CostReportsView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
-        .task(id: auth.isWebSessionLinked) {
-            if auth.isWebSessionLinked {
-                nexlayer.sessionToken = auth.webSessionToken
-                await nexlayer.fetchCredits()
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var creditsLine: some View {
-        if nexlayer.isCheckingCredits {
-            HStack(spacing: 4) {
-                ProgressView().scaleEffect(0.6)
-                Text("Checking credits…")
-                    .font(AppFonts.label)
-                    .foregroundStyle(AppColors.textSecondary)
-            }
-        } else if let credits = nexlayer.credits,
-                  credits != NexlayerService.creditsUnavailableMessage {
-            Text(credits)
-                .font(AppFonts.label)
-                .foregroundStyle(AppColors.textPrimary)
-                .lineLimit(2)
-        } else {
-            // Not linked or unavailable
-            if auth.isWebSessionLinked {
-                Button {
-                    Task { await nexlayer.fetchCredits() }
-                } label: {
-                    Text("Refresh credits")
-                        .font(AppFonts.label)
-                        .foregroundStyle(AppColors.accent)
-                }
-                .buttonStyle(.plain)
-            } else {
-                Button {
-                    auth.openWebSignIn()
-                } label: {
-                    Text("Link account to view credits →")
-                        .font(AppFonts.label)
-                        .foregroundStyle(AppColors.accent)
-                }
-                .buttonStyle(.plain)
-            }
-        }
     }
 
     // MARK: - Empty state
@@ -222,10 +189,6 @@ struct CostReportsView: View {
     }
 
     // MARK: - Helpers
-
-    private func firstLine(_ text: String) -> String? {
-        text.components(separatedBy: "\n").first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
-    }
 
     private func relativeDate(_ date: Date) -> String {
         let diff = Date().timeIntervalSince(date)
