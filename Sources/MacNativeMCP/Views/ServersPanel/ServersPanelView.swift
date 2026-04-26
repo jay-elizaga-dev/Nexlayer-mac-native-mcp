@@ -9,12 +9,13 @@ struct ServersPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 6) {
                 Text("SERVERS")
                     .font(AppFonts.label)
                     .foregroundStyle(AppColors.textSecondary)
                 Spacer()
 
+                // Sync deployments from Nexlayer
                 Button {
                     Task {
                         if let configs = try? await nexlayer.fetchDeployments(namespace: "amiable-beetle") {
@@ -33,11 +34,26 @@ struct ServersPanelView: View {
                 .help("Sync deployments from Nexlayer")
                 .disabled(nexlayer.isSyncing || nexlayer.client == nil)
 
+                // Add server
                 Button(action: { showAddSheet = true }) {
-                    Image(systemName: "plus")
+                    Image(systemName: "externaldrive.badge.plus")
                         .foregroundStyle(AppColors.textSecondary)
                 }
                 .buttonStyle(.plain)
+                .help("Add server")
+
+                // New chat — creates a chat for the selected server
+                Button(action: newChatAction) {
+                    Image(systemName: "plus.bubble")
+                        .foregroundStyle(appState.activeServerId != nil
+                                         ? AppColors.accent
+                                         : AppColors.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .help(appState.activeServerId != nil
+                      ? "New chat for selected server"
+                      : "Select a server first")
+                .disabled(appState.activeServerId == nil)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -64,6 +80,12 @@ struct ServersPanelView: View {
                 showAddSheet = false
             }
         }
+    }
+
+    private func newChatAction() {
+        guard let id = appState.activeServerId,
+              let server = appState.servers.first(where: { $0.id == id }) else { return }
+        appState.createChat(for: server)
     }
 
     private func toggle(_ id: UUID) {

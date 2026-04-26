@@ -44,6 +44,31 @@ class AppState {
         if !newServers.isEmpty { store.save(servers) }
     }
 
+    // MARK: - Chat sessions
+
+    struct ChatSession: Identifiable {
+        var id: UUID = UUID()
+        var serverId: UUID
+        var title: String
+        var messages: [ConversationMessage] = []
+        var createdAt: Date = Date()
+    }
+
+    var chatSessions: [ChatSession] = []
+    var activeChatId: UUID? = nil
+
+    func createChat(for server: ServerConfig) {
+        let session = ChatSession(serverId: server.id, title: "\(server.name): New Chat")
+        chatSessions.append(session)
+        activeChatId = session.id
+        activeServerId = server.id
+    }
+
+    func appendMessage(_ message: ConversationMessage, toChatId chatId: UUID) {
+        guard let idx = chatSessions.firstIndex(where: { $0.id == chatId }) else { return }
+        chatSessions[idx].messages.append(message)
+    }
+
     enum TransportType: String, Codable {
         case stdio, http
     }

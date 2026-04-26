@@ -35,7 +35,7 @@ struct ContentView: View {
             centerPanel
                 .frame(minWidth: 400)
 
-            OutputPanelView()
+            rightPanel
                 .frame(minWidth: 280)
         }
         .background(AppColors.background)
@@ -49,5 +49,26 @@ struct ContentView: View {
         } else {
             ConversationView()
         }
+    }
+
+    @ViewBuilder
+    private var rightPanel: some View {
+        if let server = appState.servers.first(where: { $0.id == appState.activeServerId }),
+           let session = chatForActiveServer {
+            ServerChatView(chatId: session.id, server: server)
+        } else {
+            OutputPanelView()
+        }
+    }
+
+    /// Returns the active chat session for the selected server (prefers activeChatId, falls back to latest).
+    private var chatForActiveServer: AppState.ChatSession? {
+        guard let serverId = appState.activeServerId else { return nil }
+        if let id = appState.activeChatId,
+           let chat = appState.chatSessions.first(where: { $0.id == id }),
+           chat.serverId == serverId {
+            return chat
+        }
+        return appState.chatSessions.last(where: { $0.serverId == serverId })
     }
 }
