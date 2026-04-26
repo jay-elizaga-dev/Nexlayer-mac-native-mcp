@@ -175,19 +175,31 @@ final class NexlayerService {
     private func call(_ tool: String, args: [String: Any]) async throws -> String {
         guard let client else { throw NexlayerServiceError.notConnected }
 
-        // 30-second timeout per tool call — if the receive loop stalls, fail fast.
-        return try await withThrowingTaskGroup(of: String.self) { group in
-            group.addTask {
-                let result = try await client.callTool(name: tool, arguments: args)
-                return result.content.compactMap { $0.text }.joined(separator: "\n")
+        var attempt = 0
+        var retryDelay: UInt64 = 1_000_000_000  // 1s → 2s (exponential)
+
+        while true {
+            do {
+                return try await withThrowingTaskGroup(of: String.self) { group in
+                    group.addTask {
+                        let result = try await client.callTool(name: tool, arguments: args)
+                        return result.content.compactMap { $0.text }.joined(separator: "\n")
+                    }
+                    group.addTask {
+                        try await Task.sleep(nanoseconds: 10_000_000_000)  // 10s
+                        throw NexlayerServiceError.callTimeout
+                    }
+                    let result = try await group.next()!
+                    group.cancelAll()
+                    return result
+                }
+            } catch NexlayerServiceError.callTimeout {
+                attempt += 1
+                guard attempt < 3 else { throw NexlayerServiceError.callTimeout }
+                try await Task.sleep(nanoseconds: retryDelay)
+                retryDelay *= 2  // 1s, 2s
             }
-            group.addTask {
-                try await Task.sleep(nanoseconds: 30_000_000_000)
-                throw NexlayerServiceError.callTimeout
-            }
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
+            // Non-timeout errors (server errors, auth failures) surface immediately.
         }
     }
 }
@@ -198,7 +210,7 @@ enum NexlayerServiceError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notConnected: return "Nexlayer MCP client is not connected"
-        case .callTimeout:  return "Tool call timed out (30s) — check your connection"
+        case .callTimeout:  return "Tool call timed out (3 attempts × 10s) — check your connection"
         }
     }
 }
