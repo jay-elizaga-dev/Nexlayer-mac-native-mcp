@@ -18,11 +18,18 @@ final class AuthManager {
     var state: State = .unauthenticated
     var currentAPIKey: String?
     var devEnvKey: String?
-    /// Pre-filled key from keychain — offered as default but not auto-connected.
+    /// Pre-filled Nexlayer key from keychain — offered as default but not auto-connected.
     private(set) var storedKey: String?
     private(set) var nexlayerClient: MCPClient?
 
+    /// Claude (Anthropic) API key — used by the conversation panel.
+    /// Optional: user can skip and use Nexlayer tools only.
+    var claudeAPIKey: String?
+    private(set) var storedClaudeKey: String?
+    var hasClaudeKey: Bool { claudeAPIKey?.isEmpty == false }
+
     /// Web session token — set after account linking via WebView or OAuth.
+    /// Only available in internal (local/dev) builds.
     private(set) var webSessionToken: String?
     var isWebSessionLinked: Bool { webSessionToken != nil }
 
@@ -33,19 +40,23 @@ final class AuthManager {
     private var webSignInWindow: WebSignInWindow?
     private(set) var oauthManager = OAuthManager()
 
-    private let nexlayerURL = URL(string: "https://mcp.nexlayer.ai/api/mcp")!
+    private var nexlayerURL: URL { AppEnvironment.current.nexlayerMCPEndpoint }
     private let keychainService = "dev.elizaga.mac-native-mcp"
     private let keychainAccount = "nexlayer-api-key"
+    private let keychainClaudeAccount = "anthropic-api-key"
     private let keychainSessionAccount = "nexlayer-session-token"
 
     init() {
         #if DEBUG
         devEnvKey = loadFromDevEnv()
         #endif
-        // Load stored key for pre-fill only — never auto-connect on startup.
-        storedKey = loadFromKeychain()
-        // Restore session token if previously linked.
-        webSessionToken = loadSessionTokenFromKeychain()
+        // Load stored keys for pre-fill only — never auto-connect on startup.
+        storedKey = loadFromKeychain(account: keychainAccount)
+        storedClaudeKey = loadFromKeychain(account: keychainClaudeAccount)
+        // Restore session token if previously linked (internal only).
+        if AppEnvironment.current.isInternal {
+            webSessionToken = loadSessionTokenFromKeychain()
+        }
     }
 
     // MARK: - dev.env loader (DEBUG only)
@@ -83,10 +94,24 @@ final class AuthManager {
         await connect(apiKey: trimmed, saveOnSuccess: true)
     }
 
+    /// Sets and persists the Claude (Anthropic) API key without re-connecting Nexlayer.
+    func setClaudeAPIKey(_ key: String) {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            claudeAPIKey = nil
+            deleteFromKeychain(account: keychainClaudeAccount)
+        } else {
+            claudeAPIKey = trimmed
+            saveToKeychain(trimmed, account: keychainClaudeAccount)
+        }
+    }
+
     func signOut() {
-        deleteFromKeychain()
+        deleteFromKeychain(account: keychainAccount)
+        deleteFromKeychain(account: keychainClaudeAccount)
         deleteSessionTokenFromKeychain()
         currentAPIKey = nil
+        claudeAPIKey = nil
         webSessionToken = nil
         linkMethod = .none
         oauthManager.signOut()
@@ -155,7 +180,7 @@ final class AuthManager {
                 state = .error("Connected but no tools returned — check your API key.")
                 return
             }
-            if saveOnSuccess { saveToKeychain(apiKey) }
+            if saveOnSuccess { saveToKeychain(apiKey, account: keychainAccount) }
             currentAPIKey = apiKey
             nexlayerClient = client
             state = .authenticated
@@ -164,25 +189,25 @@ final class AuthManager {
         }
     }
 
-    // MARK: - Keychain
+    // MARK: - Keychain (generic)
 
-    private func saveToKeychain(_ key: String) {
-        guard let data = key.data(using: .utf8) else { return }
+    private func saveToKeychain(_ value: String, account: String) {
+        guard let data = value.data(using: .utf8) else { return }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount,
+            kSecAttrAccount as String: account,
             kSecValueData as String: data
         ]
         SecItemDelete(query as CFDictionary)
         SecItemAdd(query as CFDictionary, nil)
     }
 
-    private func loadFromKeychain() -> String? {
+    private func loadFromKeychain(account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount,
+            kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -194,11 +219,11 @@ final class AuthManager {
         return key
     }
 
-    private func deleteFromKeychain() {
+    private func deleteFromKeychain(account: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount
+            kSecAttrAccount as String: account
         ]
         SecItemDelete(query as CFDictionary)
     }

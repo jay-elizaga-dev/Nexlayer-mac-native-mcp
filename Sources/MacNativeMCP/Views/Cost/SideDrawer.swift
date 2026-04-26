@@ -251,36 +251,25 @@ struct SideDrawer: View {
             Divider().background(AppColors.border)
 
             if auth.state == .authenticated {
-                // Web session link
-                if auth.isWebSessionLinked {
-                    let methodLabel = auth.linkMethod == .oauth ? "OAuth" : "Web Session"
-                    let methodIcon  = auth.linkMethod == .oauth ? "lock.shield.fill" : "link.circle.fill"
-                    menuItem(label: "Linked via \(methodLabel) ✓", icon: methodIcon, danger: false) { }
-                        .disabled(true)
-                    menuItem(label: "Unlink Account", icon: "link.badge.minus", danger: false) {
-                        showUserMenu = false
-                        auth.unlinkWebSession()
+                // Web session link — internal builds only (local/dev)
+                if AppEnvironment.current.isInternal {
+                    if auth.isWebSessionLinked {
+                        let methodLabel = auth.linkMethod == .oauth ? "OAuth" : "Web Session"
+                        let methodIcon  = auth.linkMethod == .oauth ? "lock.shield.fill" : "link.circle.fill"
+                        menuItem(label: "Linked via \(methodLabel) ✓", icon: methodIcon, danger: false) { }
+                            .disabled(true)
+                        menuItem(label: "Unlink Account", icon: "link.badge.minus", danger: false) {
+                            showUserMenu = false
+                            auth.unlinkWebSession()
+                        }
+                    } else {
+                        menuItem(label: "Link Nexlayer Account", icon: "link", danger: false) {
+                            showUserMenu = false
+                            auth.openWebSignIn()
+                        }
                     }
-                } else {
-                    let linkLabel = auth.oauthManager.isConfigured
-                        ? "Sign in with Nexlayer"
-                        : "Link Nexlayer Account"
-                    let linkIcon  = auth.oauthManager.isConfigured ? "person.badge.key" : "link"
-                    menuItem(label: linkLabel, icon: linkIcon, danger: false) {
-                        showUserMenu = false
-                        auth.openWebSignIn()
-                    }
-                    Text(auth.oauthManager.isConfigured
-                         ? "Opens Nexlayer in your browser to sign in"
-                         : "Opens nexlayer.com to link your account")
-                        .font(.system(size: 10))
-                        .foregroundStyle(AppColors.textSecondary)
-                        .padding(.horizontal, 14)
-                        .padding(.bottom, 6)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Divider().background(AppColors.border)
                 }
-
-                Divider().background(AppColors.border)
 
                 menuItem(label: "Sign Out", icon: "rectangle.portrait.and.arrow.right", danger: true) {
                     showUserMenu = false

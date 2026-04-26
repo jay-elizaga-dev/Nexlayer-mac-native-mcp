@@ -1,11 +1,19 @@
 import Foundation
 
 /// Default Nexlayer deployments seeded on first launch (when servers list is empty).
-/// Namespace: amiable-beetle
+///
+/// **Internal only** — this namespace is private infrastructure and must never ship
+/// in production/staging builds. Public users start with an empty server list.
 enum NexlayerBootstrap {
     private static let namespace = "amiable-beetle"
 
+    /// Returns the default server list for internal builds, empty for public builds.
     static var defaultServers: [AppState.ServerConfig] {
+        guard AppEnvironment.current.isInternal else { return [] }
+        return internalServers
+    }
+
+    private static var internalServers: [AppState.ServerConfig] {
         let deployments: [(name: String, slug: String)] = [
             ("Gitea",               "gitea-server"),
             ("Uptime Monitor",      "uptime-monitor"),

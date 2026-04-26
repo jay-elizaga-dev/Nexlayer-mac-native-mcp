@@ -2,8 +2,11 @@ import SwiftUI
 
 struct LandingView: View {
     @Environment(AuthManager.self) private var auth
-    @State private var apiKey: String = ""
-    @FocusState private var keyFieldFocused: Bool
+    @State private var nexlayerKey: String = ""
+    @State private var claudeKey: String = ""
+    @FocusState private var focusedField: Field?
+
+    private enum Field { case nexlayer, claude }
 
     var body: some View {
         ZStack {
@@ -12,7 +15,7 @@ struct LandingView: View {
             VStack(spacing: 0) {
                 Spacer()
 
-                // Logo mark
+                // Logo
                 ZStack {
                     RoundedRectangle(cornerRadius: 20)
                         .fill(AppColors.surface)
@@ -31,9 +34,26 @@ struct LandingView: View {
 
                 Spacer().frame(height: 8)
 
-                Text("Log in to Nexlayer via MCP")
+                Text("Connect your API keys to get started")
                     .font(AppFonts.prose)
                     .foregroundStyle(AppColors.textSecondary)
+
+                // Environment badge (internal builds only)
+                if AppEnvironment.current.isInternal {
+                    HStack(spacing: 4) {
+                        Image(systemName: AppEnvironment.current.displayIcon)
+                            .font(.system(size: 9))
+                        Text(AppEnvironment.current.displayName.uppercased())
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(1)
+                    }
+                    .foregroundStyle(AppColors.warning)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(AppColors.warning.opacity(0.12))
+                    .clipShape(Capsule())
+                    .padding(.top, 8)
+                }
 
                 Spacer().frame(height: 40)
 
@@ -41,13 +61,13 @@ struct LandingView: View {
                 case .checking, .connecting:
                     VStack(spacing: 12) {
                         ProgressView()
-                        Text(auth.state == .checking ? "Checking saved session…" : "Connecting to Nexlayer…")
+                        Text(auth.state == .checking ? "Checking saved session…" : "Connecting…")
                             .font(AppFonts.label)
                             .foregroundStyle(AppColors.textSecondary)
                     }
 
                 case .unauthenticated, .error:
-                    VStack(spacing: 16) {
+                    VStack(spacing: 20) {
                         // Error banner
                         if case .error(let msg) = auth.state {
                             HStack(spacing: 8) {
@@ -64,42 +84,29 @@ struct LandingView: View {
                             .frame(maxWidth: 320)
                         }
 
-                        // API key input
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 6) {
-                                Text("API KEY")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(AppColors.textSecondary)
-                                    .tracking(1)
-                                Button("Get one →") {
-                                    NSWorkspace.shared.open(URL(string: "https://app.nexlayer.com/settings/api-keys")!)
-                                }
-                                .buttonStyle(.plain)
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(AppColors.accent)
-                                .tracking(1)
-                            }
+                        // Nexlayer key (required)
+                        keyField(
+                            label: "NEXLAYER API KEY",
+                            hint: "required",
+                            hintColor: AppColors.textSecondary,
+                            placeholder: "Paste your Nexlayer API key…",
+                            text: $nexlayerKey,
+                            field: .nexlayer,
+                            linkURL: URL(string: "https://app.nexlayer.com/settings/api-keys")!,
+                            linkLabel: "Get one →"
+                        )
 
-                            SecureField("Paste your Nexlayer API key…", text: $apiKey)
-                                .textFieldStyle(.plain)
-                                .font(AppFonts.code)
-                                .foregroundStyle(AppColors.textPrimary)
-                                .focused($keyFieldFocused)
-                                .onSubmit { submit() }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
-                                .background(AppColors.surface)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(keyFieldFocused ? AppColors.accent : AppColors.border, lineWidth: 1)
-                                )
-                                .frame(width: 320)
-
-                            Text("app.nexlayer.com/settings/api-keys")
-                                .font(.system(size: 10))
-                                .foregroundStyle(AppColors.textSecondary.opacity(0.6))
-                        }
+                        // Claude key (optional)
+                        keyField(
+                            label: "ANTHROPIC (CLAUDE) API KEY",
+                            hint: "optional — enables conversation",
+                            hintColor: AppColors.textSecondary.opacity(0.7),
+                            placeholder: "sk-ant-… (leave blank to use tools only)",
+                            text: $claudeKey,
+                            field: .claude,
+                            linkURL: URL(string: "https://console.anthropic.com/settings/keys")!,
+                            linkLabel: "Get one →"
+                        )
 
                         // Connect button
                         Button(action: submit) {
@@ -107,11 +114,17 @@ struct LandingView: View {
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .frame(width: 320, height: 44)
-                                .background(apiKey.isEmpty ? AppColors.border : AppColors.accent)
+                                .background(nexlayerKey.isEmpty ? AppColors.border : AppColors.accent)
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
                         .buttonStyle(.plain)
-                        .disabled(apiKey.isEmpty)
+                        .disabled(nexlayerKey.isEmpty)
+
+                        Text("Keys are stored in macOS Keychain — never sent elsewhere.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(AppColors.textSecondary.opacity(0.5))
+                            .frame(maxWidth: 320)
+                            .multilineTextAlignment(.center)
                     }
 
                 case .authenticated:
@@ -127,20 +140,73 @@ struct LandingView: View {
             }
         }
         .onAppear {
-            keyFieldFocused = true
-            // Pre-fill from stored key or dev env (user still must press Connect)
-            if apiKey.isEmpty {
-                if let devKey = auth.devEnvKey {
-                    apiKey = devKey
-                } else if let stored = auth.storedKey {
-                    apiKey = stored
-                }
+            focusedField = .nexlayer
+            if nexlayerKey.isEmpty {
+                nexlayerKey = auth.devEnvKey ?? auth.storedKey ?? ""
+            }
+            if claudeKey.isEmpty, let stored = auth.storedClaudeKey {
+                claudeKey = stored
             }
         }
     }
 
+    // MARK: - Key field builder
+
+    @ViewBuilder
+    private func keyField(
+        label: String,
+        hint: String,
+        hintColor: Color,
+        placeholder: String,
+        text: Binding<String>,
+        field: Field,
+        linkURL: URL,
+        linkLabel: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(label)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(AppColors.textSecondary)
+                    .tracking(1)
+                Text("·")
+                    .foregroundStyle(AppColors.border)
+                    .font(.system(size: 10))
+                Text(hint)
+                    .font(.system(size: 10))
+                    .foregroundStyle(hintColor)
+                Spacer()
+                Button(linkLabel) { NSWorkspace.shared.open(linkURL) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(AppColors.accent)
+                    .tracking(1)
+            }
+            SecureField(placeholder, text: text)
+                .textFieldStyle(.plain)
+                .font(AppFonts.code)
+                .foregroundStyle(AppColors.textPrimary)
+                .focused($focusedField, equals: field)
+                .onSubmit { submit() }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(AppColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(focusedField == field ? AppColors.accent : AppColors.border, lineWidth: 1)
+                )
+                .frame(width: 320)
+        }
+    }
+
+    // MARK: - Submit
+
     private func submit() {
-        guard !apiKey.isEmpty else { return }
-        Task { await auth.authenticate(apiKey: apiKey) }
+        guard !nexlayerKey.isEmpty else { return }
+        if !claudeKey.isEmpty {
+            auth.setClaudeAPIKey(claudeKey)
+        }
+        Task { await auth.authenticate(apiKey: nexlayerKey) }
     }
 }
