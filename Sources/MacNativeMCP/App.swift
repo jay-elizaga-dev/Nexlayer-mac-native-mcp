@@ -31,6 +31,12 @@ struct MacNativeMCPApp: App {
                         if let client = authManager.nexlayerClient {
                             nexlayerService.setClient(client)
                         }
+                        // Auto-sync deployments from Nexlayer after auth
+                        Task {
+                            if let configs = try? await nexlayerService.fetchDeployments(namespace: "amiable-beetle") {
+                                appState.syncDeployments(configs)
+                            }
+                        }
                     } else {
                         serverManager.apiKey = nil
                         nexlayerService.reset()

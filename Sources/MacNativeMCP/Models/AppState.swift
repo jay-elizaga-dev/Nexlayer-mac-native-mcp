@@ -36,6 +36,14 @@ class AppState {
         store.save(servers)
     }
 
+    /// Merge discovered Nexlayer deployments into the server list without duplicates.
+    func syncDeployments(_ discovered: [ServerConfig]) {
+        let existingSlugs = Set(servers.filter(\.isNexlayerDeployment).map(\.nexlayerApp))
+        let newServers = discovered.filter { !existingSlugs.contains($0.nexlayerApp) }
+        servers.append(contentsOf: newServers)
+        if !newServers.isEmpty { store.save(servers) }
+    }
+
     enum TransportType: String, Codable {
         case stdio, http
     }

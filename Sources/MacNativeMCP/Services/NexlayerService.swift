@@ -13,6 +13,7 @@ final class NexlayerService {
     var logsCache:    [String: String]            = [:]
     var loading:      [String: Bool]              = [:]
     var errors:       [String: String]            = [:]
+    var isSyncing:    Bool                        = false
 
     // MARK: - Models
 
@@ -83,6 +84,90 @@ final class NexlayerService {
         // Refresh status after restart
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await fetchStatus(for: server)
+    }
+
+    // MARK: - Discovery
+
+    func fetchDeployments(namespace: String) async throws -> [AppState.ServerConfig] {
+        isSyncing = true
+        defer { isSyncing = false }
+        let text = try await call("nexlayer_debug_namespace_info", args: ["domain": namespace])
+        let slugs = Self.parseDeploymentSlugs(from: text)
+        return slugs.map { slug in
+            AppState.ServerConfig(
+                name: Self.displayName(for: slug),
+                transport: .http,
+                url: "https://\(namespace)-\(slug).cloud.nexlayer.ai",
+                nexlayerDomain: namespace,
+                nexlayerApp: slug
+            )
+        }
+    }
+
+    // Visible for testing
+    static func parseDeploymentSlugs(from text: String) -> [String] {
+        var inServices = false
+        var slugs = [String]()
+        var seen = Set<String>()
+
+        for line in text.components(separatedBy: "\n") {
+            if line.hasPrefix("SERVICES:") { inServices = true; continue }
+            if inServices && (line.hasPrefix("CONFIGMAPS") || line.hasPrefix("---")) { break }
+            guard inServices else { continue }
+
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+
+            let serviceName = String(trimmed.split(separator: " ").first ?? Substring(trimmed))
+            guard !systemServices.contains(serviceName),
+                  !serviceName.hasSuffix("...") else { continue }
+
+            if let slug = extractSlug(from: serviceName), !seen.contains(slug) {
+                seen.insert(slug)
+                slugs.append(slug)
+            }
+        }
+        return slugs.sorted()
+    }
+
+    private static let infraComponents: Set<String> = [
+        "web", "kuma", "minio", "vllm", "runner", "backup", "frontend", "backend", "worker"
+    ]
+
+    private static let systemServices: Set<String> = [
+        "nexlayer-debug-proxy", "pod"
+    ]
+
+    static func extractSlug(from serviceName: String) -> String? {
+        guard serviceName.hasSuffix("-service") else { return nil }
+        let name = String(serviceName.dropLast("-service".count))
+        let tokens = name.split(separator: "-").map(String.init)
+        guard tokens.count > 1 else { return name }
+
+        // Strategy 1: find a prefix that repeats at a later position
+        // Try longest prefixes first so "etf-bot-dev-test-etf-bot" picks "etf-bot-dev-test" not "etf"
+        for prefixLen in stride(from: tokens.count / 2, through: 1, by: -1) {
+            let prefix = Array(tokens[..<prefixLen])
+            for startPos in prefixLen...(tokens.count - prefixLen) {
+                if Array(tokens[startPos..<(startPos + prefixLen)]) == prefix {
+                    return Array(tokens[..<startPos]).joined(separator: "-")
+                }
+            }
+        }
+
+        // Strategy 2: strip known infra component suffix
+        if let last = tokens.last, infraComponents.contains(last) {
+            let slug = Array(tokens.dropLast()).joined(separator: "-")
+            return slug.isEmpty ? nil : slug
+        }
+
+        return name
+    }
+
+    static func displayName(for slug: String) -> String {
+        slug.split(separator: "-")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
     }
 
     // MARK: - Private

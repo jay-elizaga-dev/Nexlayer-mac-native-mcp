@@ -3,6 +3,7 @@ import SwiftUI
 struct ServersPanelView: View {
     @Environment(AppState.self) var appState
     @Environment(MCPServerManager.self) var serverManager
+    @Environment(NexlayerService.self) var nexlayer
     @State private var showAddSheet = false
     @State private var expandedServerIds: Set<UUID> = []
 
@@ -13,6 +14,25 @@ struct ServersPanelView: View {
                     .font(AppFonts.label)
                     .foregroundStyle(AppColors.textSecondary)
                 Spacer()
+
+                Button {
+                    Task {
+                        if let configs = try? await nexlayer.fetchDeployments(namespace: "amiable-beetle") {
+                            appState.syncDeployments(configs)
+                        }
+                    }
+                } label: {
+                    if nexlayer.isSyncing {
+                        ProgressView().scaleEffect(0.55).frame(width: 14, height: 14)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("Sync deployments from Nexlayer")
+                .disabled(nexlayer.isSyncing || nexlayer.client == nil)
+
                 Button(action: { showAddSheet = true }) {
                     Image(systemName: "plus")
                         .foregroundStyle(AppColors.textSecondary)
