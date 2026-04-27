@@ -473,6 +473,150 @@ final class NexlayerService {
             }
         }
     }
+
+    // MARK: - Direct REST API
+
+    var api: NexlayerAPI?
+
+    private func recordAPICall(tool: String, deployment: String? = nil, start: Date, success: Bool) {
+        let ms = Int(Date().timeIntervalSince(start) * 1000)
+        callHistory.append(ToolCallRecord(tool: tool, deployment: deployment ?? "", durationMs: ms, tokenBurn: 0, success: success))
+    }
+
+    func deployYAML(_ yaml: String) async throws -> StartDeploymentResponse {
+        guard let api else { throw NexlayerAPIError.invalidResponse }
+        let start = Date()
+        do {
+            let response = try await api.startDeployment(yaml: yaml, sessionToken: self.sessionToken)
+            if response.sessionToken != nil { self.sessionToken = response.sessionToken }
+            recordAPICall(tool: "startUserDeployment", start: start, success: true)
+            return response
+        } catch {
+            recordAPICall(tool: "startUserDeployment", start: start, success: false)
+            throw error
+        }
+    }
+
+    func updateDeployment(yaml: String) async throws -> StartDeploymentResponse {
+        guard let token = sessionToken else { throw NexlayerAPIError.invalidResponse }
+        guard let api else { throw NexlayerAPIError.invalidResponse }
+        let start = Date()
+        do {
+            let response = try await api.updateDeployment(yaml: yaml, sessionToken: token)
+            recordAPICall(tool: "updateUserDeployment", start: start, success: true)
+            return response
+        } catch {
+            recordAPICall(tool: "updateUserDeployment", start: start, success: false)
+            throw error
+        }
+    }
+
+    func extendDeployment(applicationName: String) async throws -> String {
+        guard let token = sessionToken else { throw NexlayerAPIError.invalidResponse }
+        guard let api else { throw NexlayerAPIError.invalidResponse }
+        let start = Date()
+        do {
+            let result = try await api.extendDeployment(applicationName: applicationName, sessionToken: token)
+            recordAPICall(tool: "extendDeployment", deployment: applicationName, start: start, success: true)
+            return result
+        } catch {
+            recordAPICall(tool: "extendDeployment", deployment: applicationName, start: start, success: false)
+            throw error
+        }
+    }
+
+    func claimDeployment(applicationName: String) async throws -> ClaimDeploymentResponse {
+        guard let token = sessionToken else { throw NexlayerAPIError.invalidResponse }
+        guard let api else { throw NexlayerAPIError.invalidResponse }
+        let start = Date()
+        do {
+            let response = try await api.claimDeployment(applicationName: applicationName, sessionToken: token)
+            recordAPICall(tool: "claimDeployment", deployment: applicationName, start: start, success: true)
+            return response
+        } catch {
+            recordAPICall(tool: "claimDeployment", deployment: applicationName, start: start, success: false)
+            throw error
+        }
+    }
+
+    func getReservations() async throws -> GetReservationsResponse {
+        guard let token = sessionToken else { throw NexlayerAPIError.invalidResponse }
+        guard let api else { throw NexlayerAPIError.invalidResponse }
+        let start = Date()
+        do {
+            let response = try await api.getReservations(sessionToken: token)
+            recordAPICall(tool: "getReservations", start: start, success: true)
+            return response
+        } catch {
+            recordAPICall(tool: "getReservations", start: start, success: false)
+            throw error
+        }
+    }
+
+    func addReservation(applicationName: String) async throws {
+        guard let token = sessionToken else { throw NexlayerAPIError.invalidResponse }
+        guard let api else { throw NexlayerAPIError.invalidResponse }
+        let start = Date()
+        do {
+            try await api.addReservation(applicationName: applicationName, sessionToken: token)
+            recordAPICall(tool: "addDeploymentReservation", deployment: applicationName, start: start, success: true)
+        } catch {
+            recordAPICall(tool: "addDeploymentReservation", deployment: applicationName, start: start, success: false)
+            throw error
+        }
+    }
+
+    func removeReservation(applicationName: String) async throws {
+        guard let token = sessionToken else { throw NexlayerAPIError.invalidResponse }
+        guard let api else { throw NexlayerAPIError.invalidResponse }
+        let start = Date()
+        do {
+            try await api.removeReservation(applicationName: applicationName, sessionToken: token)
+            recordAPICall(tool: "removeDeploymentReservation", deployment: applicationName, start: start, success: true)
+        } catch {
+            recordAPICall(tool: "removeDeploymentReservation", deployment: applicationName, start: start, success: false)
+            throw error
+        }
+    }
+
+    func removeAllReservations() async throws {
+        guard let token = sessionToken else { throw NexlayerAPIError.invalidResponse }
+        guard let api else { throw NexlayerAPIError.invalidResponse }
+        let start = Date()
+        do {
+            try await api.removeAllReservations(sessionToken: token)
+            recordAPICall(tool: "removeReservations", start: start, success: true)
+        } catch {
+            recordAPICall(tool: "removeReservations", start: start, success: false)
+            throw error
+        }
+    }
+
+    func validateYAML(_ yaml: String) async throws -> ValidationSuccess {
+        guard let api else { throw NexlayerAPIError.invalidResponse }
+        let start = Date()
+        do {
+            let result = try await api.validate(application: NexlayerApplication(name: "app", pods: []))
+            recordAPICall(tool: "validate", start: start, success: true)
+            return result
+        } catch {
+            recordAPICall(tool: "validate", start: start, success: false)
+            throw error
+        }
+    }
+
+    func getSchema() async throws -> Data {
+        guard let api else { throw NexlayerAPIError.invalidResponse }
+        let start = Date()
+        do {
+            let data = try await api.getSchema()
+            recordAPICall(tool: "getSchema", start: start, success: true)
+            return data
+        } catch {
+            recordAPICall(tool: "getSchema", start: start, success: false)
+            throw error
+        }
+    }
 }
 
 enum NexlayerServiceError: Error, LocalizedError {
