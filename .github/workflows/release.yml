@@ -3,13 +3,13 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'          # triggers on v0.2.0, v1.0.0, etc.
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g. v0.2.0)'
+        description: 'Version tag (e.g. v0.3.0)'
         required: true
-        default: 'v0.2.0'
+        default: 'v0.3.0'
 
 env:
   APP_NAME: MacNativeMCP
@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   build-and-release:
-    runs-on: macos-14        # Apple Silicon runner (M1)
+    runs-on: macos-14
     timeout-minutes: 30
 
     steps:
@@ -36,16 +36,7 @@ jobs:
             VERSION="${GITHUB_REF#refs/tags/}"
           fi
           echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
-          # Strip leading 'v' for CFBundleShortVersionString
           echo "short=${VERSION#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Update version in Info.plist
-        run: |
-          SHORT="${{ steps.version.outputs.short }}"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT" \
-            MacNativeMCP.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $SHORT" \
-            MacNativeMCP.app/Contents/Info.plist
 
       - name: Build release (arm64)
         run: swift build -c release --arch arm64
@@ -55,12 +46,7 @@ jobs:
 
       - name: Create universal binary
         run: |
-          lipo -create \
-            .build/arm64-apple-macosx/release/$APP_NAME \
-            .build/x86_64-apple-macosx/release/$APP_NAME \
-            -output .build/release-universal/$APP_NAME
           mkdir -p .build/release-universal
-
           lipo -create \
             .build/arm64-apple-macosx/release/$APP_NAME \
             .build/x86_64-apple-macosx/release/$APP_NAME \
@@ -68,15 +54,52 @@ jobs:
 
       - name: Assemble .app bundle
         run: |
+          SHORT="${{ steps.version.outputs.short }}"
           mkdir -p Staging/$APP_NAME.app/Contents/MacOS
-          cp -R MacNativeMCP.app/Contents/Info.plist Staging/$APP_NAME.app/Contents/
-          cp -R MacNativeMCP.app/Contents/Resources  Staging/$APP_NAME.app/Contents/ 2>/dev/null || true
-          cp .build/release-universal/$APP_NAME      Staging/$APP_NAME.app/Contents/MacOS/$APP_NAME
+          mkdir -p Staging/$APP_NAME.app/Contents/Resources
+
+          # Create Info.plist with resolved version
+          cat > Staging/$APP_NAME.app/Contents/Info.plist << PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>$APP_NAME</string>
+            <key>CFBundleDisplayName</key>
+            <string>Mac Native MCP</string>
+            <key>CFBundleIdentifier</key>
+            <string>$BUNDLE_ID</string>
+            <key>CFBundleVersion</key>
+            <string>$SHORT</string>
+            <key>CFBundleShortVersionString</key>
+            <string>$SHORT</string>
+            <key>CFBundleExecutable</key>
+            <string>$APP_NAME</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>14.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>NSPrincipalClass</key>
+            <string>NSApplication</string>
+            <key>NSHumanReadableCopyright</key>
+            <string>© 2026 Elizaga.Dev</string>
+            <key>NSAppTransportSecurity</key>
+            <dict>
+              <key>NSAllowsArbitraryLoads</key>
+              <true/>
+            </dict>
+          </dict>
+          </plist>
+          PLIST
+
+          cp .build/release-universal/$APP_NAME Staging/$APP_NAME.app/Contents/MacOS/$APP_NAME
           chmod +x Staging/$APP_NAME.app/Contents/MacOS/$APP_NAME
 
-      - name: Ad-hoc code sign (for Gatekeeper bypass instructions)
-        run: |
-          codesign --force --deep --sign - Staging/$APP_NAME.app
+      - name: Ad-hoc code sign
+        run: codesign --force --deep --sign - Staging/$APP_NAME.app
 
       - name: Create .dmg
         run: |
