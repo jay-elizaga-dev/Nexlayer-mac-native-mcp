@@ -1,6 +1,7 @@
 import SwiftUI
 
 
+@MainActor
 struct ConversationPanel: View {
     var body: some View {
         ZStack {

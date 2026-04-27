@@ -1,6 +1,7 @@
 import SwiftUI
 
 
+@MainActor
 struct ToolRowView: View {
     @Environment(AppState.self) var appState
 

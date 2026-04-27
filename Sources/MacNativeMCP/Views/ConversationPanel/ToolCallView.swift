@@ -18,6 +18,7 @@ struct ToolCall: Identifiable {
 }
 
 
+@MainActor
 struct ToolCallView: View {
     let toolCall: ToolCall
     @State private var isExpanded = false

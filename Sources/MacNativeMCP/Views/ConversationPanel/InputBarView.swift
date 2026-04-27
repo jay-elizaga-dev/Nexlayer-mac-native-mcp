@@ -4,6 +4,7 @@ import AppKit
 // MARK: - InputBarView
 
 
+@MainActor
 struct InputBarView: View {
     @Environment(AppState.self) private var appState
 

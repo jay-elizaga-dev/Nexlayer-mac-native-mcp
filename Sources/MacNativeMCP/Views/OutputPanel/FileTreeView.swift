@@ -1,6 +1,7 @@
 import SwiftUI
 
 
+@MainActor
 struct FileTreeView: View {
     let entries: [AppState.FileEntry]
 
@@ -94,44 +95,4 @@ private struct FileTreeRowView: View {
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
     }
-}
-
-#Preview {
-    let sampleEntries = [
-        AppState.FileEntry(
-            path: "/",
-            name: "Root",
-            isDirectory: true,
-            children: [
-                AppState.FileEntry(
-                    path: "/Sources",
-                    name: "Sources",
-                    isDirectory: true,
-                    children: [
-                        AppState.FileEntry(
-                            path: "/Sources/main.swift",
-                            name: "main.swift",
-                            isDirectory: false,
-                            size: 2048
-                        ),
-                        AppState.FileEntry(
-                            path: "/Sources/Utils.swift",
-                            name: "Utils.swift",
-                            isDirectory: false,
-                            size: 4096
-                        ),
-                    ]
-                ),
-                AppState.FileEntry(
-                    path: "/README.md",
-                    name: "README.md",
-                    isDirectory: false,
-                    size: 1024
-                ),
-            ]
-        ),
-    ]
-
-    FileTreeView(entries: sampleEntries)
-        .background(AppColors.background)
 }

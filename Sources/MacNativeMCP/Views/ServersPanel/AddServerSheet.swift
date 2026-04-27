@@ -1,6 +1,7 @@
 import SwiftUI
 
 
+@MainActor
 struct AddServerSheet: View {
     @Environment(\.dismiss) private var dismiss
 

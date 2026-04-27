@@ -1,6 +1,7 @@
 import SwiftUI
 
 
+@MainActor
 struct SettingsView: View {
     var body: some View {
         TabView {
@@ -19,6 +20,7 @@ struct SettingsView: View {
 // MARK: - Servers Tab
 
 
+@MainActor
 struct ServersSettingsTab: View {
     @Environment(AppState.self) private var appState
     @State private var selectedId: UUID? = nil
@@ -118,6 +120,7 @@ private struct NexlayerSettingsTab: View {
 // MARK: - Appearance Tab
 
 
+@MainActor
 struct AppearanceSettingsTab: View {
     @AppStorage("colorScheme") private var colorScheme: String = "System"
     @AppStorage("codeFontSize") private var fontSize: Double = 13

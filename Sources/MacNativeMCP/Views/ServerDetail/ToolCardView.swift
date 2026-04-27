@@ -1,6 +1,7 @@
 import SwiftUI
 
 
+@MainActor
 struct ToolCardView: View {
     let tool: MCPTool
     let serverId: UUID

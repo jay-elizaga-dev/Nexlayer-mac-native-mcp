@@ -1,6 +1,7 @@
 import SwiftUI
 
 
+@MainActor
 struct ConversationView: View {
     @Environment(AppState.self) var appState
 

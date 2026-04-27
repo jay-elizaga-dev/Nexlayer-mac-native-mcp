@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 
+@MainActor
 struct CodeBlockView: View {
     let content: String
     let language: String

@@ -1,6 +1,7 @@
 import SwiftUI
 
 
+@MainActor
 struct ServersPanel: View {
     var body: some View {
         ZStack {

@@ -1,6 +1,7 @@
 import SwiftUI
 
 
+@MainActor
 struct OutputPanel: View {
     var body: some View {
         ZStack {
