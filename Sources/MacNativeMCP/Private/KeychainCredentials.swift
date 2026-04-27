@@ -47,7 +47,8 @@ final class KeychainCredentialStore: ObservableObject {
     func startPolling(interval: TimeInterval = 30) {
         pollingTimer?.invalidate()
         pollingTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.load() }
+            guard let self else { return }
+            Task { @MainActor [weak self] in self?.load() }
         }
     }
 

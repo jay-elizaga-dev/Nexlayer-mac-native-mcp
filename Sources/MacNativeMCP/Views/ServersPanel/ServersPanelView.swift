@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct ServersPanelView: View {
     @Environment(AppState.self) var appState
     @Environment(MCPServerManager.self) var serverManager
