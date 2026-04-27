@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 
+@MainActor
 struct BillingView: View {
     @Environment(NexlayerService.self) var nexlayer
     @Environment(AuthManager.self) var auth

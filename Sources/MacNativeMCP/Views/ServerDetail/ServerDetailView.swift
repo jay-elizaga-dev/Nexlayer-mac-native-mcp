@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct ServerDetailView: View {
     let server: AppState.ServerConfig
 

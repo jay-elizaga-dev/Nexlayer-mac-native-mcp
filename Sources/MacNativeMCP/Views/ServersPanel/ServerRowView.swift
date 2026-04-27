@@ -1,5 +1,6 @@
 import SwiftUI
 
+
 struct ServerRowView: View {
     @Environment(AppState.self) var appState
     @Environment(MCPServerManager.self) var serverManager

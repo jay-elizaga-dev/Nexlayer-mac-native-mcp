@@ -1,5 +1,6 @@
 import SwiftUI
 
+
 struct OutputPanelView: View {
     @Environment(AppState.self) var appState
 

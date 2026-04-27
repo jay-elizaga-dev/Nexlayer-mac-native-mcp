@@ -1,5 +1,6 @@
 import SwiftUI
 
+
 struct FileTreeView: View {
     let entries: [AppState.FileEntry]
 

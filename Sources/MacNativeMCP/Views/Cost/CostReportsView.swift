@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 
+@MainActor
 struct CostReportsView: View {
     @Environment(AppState.self) var appState
     @Environment(NexlayerService.self) var nexlayer

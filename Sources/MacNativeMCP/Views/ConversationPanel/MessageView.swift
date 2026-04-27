@@ -1,5 +1,6 @@
 import SwiftUI
 
+
 struct MessageView: View {
     let message: AppState.ConversationMessage
 

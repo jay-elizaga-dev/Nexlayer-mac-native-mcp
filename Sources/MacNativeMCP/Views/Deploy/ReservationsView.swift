@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 
+
 struct ReservationsView: View {
     @Environment(AuthManager.self) private var auth
 

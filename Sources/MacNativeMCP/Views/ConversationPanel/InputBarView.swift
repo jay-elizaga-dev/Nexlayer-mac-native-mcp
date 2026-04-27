@@ -3,6 +3,7 @@ import AppKit
 
 // MARK: - InputBarView
 
+
 struct InputBarView: View {
     @Environment(AppState.self) private var appState
 

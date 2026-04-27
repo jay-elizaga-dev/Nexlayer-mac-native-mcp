@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct ServerChatView: View {
     @Environment(AppState.self) private var appState
     @Environment(NexlayerService.self) private var nexlayer

@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct LandingView: View {
     @Environment(AuthManager.self) private var auth
     @State private var nexlayerKey: String = ""

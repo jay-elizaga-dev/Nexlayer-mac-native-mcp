@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct CostDetailView: View {
     let deployment: String
     @Environment(NexlayerService.self) var nexlayer

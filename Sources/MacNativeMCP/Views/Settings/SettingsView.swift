@@ -1,5 +1,6 @@
 import SwiftUI
 
+
 struct SettingsView: View {
     var body: some View {
         TabView {
@@ -16,6 +17,7 @@ struct SettingsView: View {
 }
 
 // MARK: - Servers Tab
+
 
 struct ServersSettingsTab: View {
     @Environment(AppState.self) private var appState
@@ -114,6 +116,7 @@ private struct NexlayerSettingsTab: View {
 }
 
 // MARK: - Appearance Tab
+
 
 struct AppearanceSettingsTab: View {
     @AppStorage("colorScheme") private var colorScheme: String = "System"

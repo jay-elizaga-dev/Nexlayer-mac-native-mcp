@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct MacNativeMCPApp: App {
     @State private var appState = AppState()
     @State private var serverManager = MCPServerManager()

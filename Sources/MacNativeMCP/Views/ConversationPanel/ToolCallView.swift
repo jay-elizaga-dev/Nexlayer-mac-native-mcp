@@ -17,6 +17,7 @@ struct ToolCall: Identifiable {
     }
 }
 
+
 struct ToolCallView: View {
     let toolCall: ToolCall
     @State private var isExpanded = false

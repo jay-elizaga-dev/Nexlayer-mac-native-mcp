@@ -1,5 +1,6 @@
 import SwiftUI
 
+
 struct ContentView: View {
     @Environment(AppState.self) var appState
     @Environment(AuthManager.self) var authManager

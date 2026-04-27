@@ -4,6 +4,7 @@ import SwiftUI
 /// Open + Servers mode  → 240px panel containing the full server list
 /// Open + Cost mode     → 200px nav panel (cost summary in main area)
 /// Closed               → 44px icon rail
+@MainActor
 struct SideDrawer: View {
     @Environment(AppState.self) var appState
     @Environment(NexlayerService.self) var nexlayer
